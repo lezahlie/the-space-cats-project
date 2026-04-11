@@ -1,0 +1,26 @@
+{
+    "_description": "stage 4: fine tune around best loss blending and optimizer settings, also fill in the remaining best",
+
+    "num_epochs": 500,
+    "mask_ratio": 0.0,
+
+    "ssim_loss_weight": [null, null, null],
+    "batch_size": [null, null, null],
+    "learn_rate": [null, null, null],
+    "weight_decay": [null, null, null],
+    "optim_beta1": [null, null, null],
+    "optim_beta2": [null, null, null],
+
+    "activation_function": null,
+    "hidden_layers": null,
+    "hidden_dims": null,
+    "latent_dims": null,
+    "conv_kernel": null,
+
+    "conv_stride": 1,
+    "hidden_factor": 2.0,
+
+    "enable_earlystop": true,
+    "earlystop_patience": 20,
+    "earlystop_min_delta": 0.0
+}

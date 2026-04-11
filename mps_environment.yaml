@@ -1,0 +1,20 @@
+name: spacecats-mps
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.4.1
+  - torchvision=0.19.1
+  - numpy
+  - scipy
+  - scikit-learn
+  - scikit-image
+  - torchmetrics
+  - optuna
+  - h5py
+  - jsonschema
+  - pandas
+  - pyyaml
+  - matplotlib
+  - seaborn

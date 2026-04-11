@@ -1,0 +1,26 @@
+{
+    "_description": "stage 2: tune model capacity using best optimizer settings from stage 1 (replace nulls with best settings)",
+
+    "num_epochs": 500,
+    "mask_ratio": 0.0,
+
+    "ssim_loss_weight": 0.0,
+    "batch_size": null,
+    "learn_rate": null,
+    "weight_decay": null,
+    "optim_beta1": null,
+    "optim_beta2": null,
+
+    "activation_function": ["relu", "leaky"],
+    "hidden_layers": [1, 2, 3, 4],
+    "hidden_dims": [64, 128, 256, 512],
+    "latent_dims": [128, 256, 512, 1024],
+    "conv_kernel": [3, 5, 7],
+
+    "conv_stride": 1,
+    "hidden_factor": 2.0,
+
+    "enable_earlystop": true,
+    "earlystop_patience": 20,
+    "earlystop_min_delta": 0.0
+}
