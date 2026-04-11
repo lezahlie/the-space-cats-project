@@ -6,7 +6,15 @@
 1. **Required**: POSIX compatible shell in a Linux/Unix-based environment
 2. **Required**: Miniconda OR Anaconda installation that supports Python version 3.10
 3. **Required**: Clone the project repo from github
-4. **Required**: Determine which environment your host architecture supports
+4. **Required**: Checkout your branch to implement your work on
+
+    ```bash
+    git checkout branch <your first name>
+    ```
+
+    > Don't forget to pull main and backup your changes before merging to main
+
+5. **Required**: Determine which environment your host architecture supports
    
     A. [cuda_environment.yml](./cuda_environment.yml): PyTorch `Stable` release built with `CUDA` support for Nvidia GPUs
 
