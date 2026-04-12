@@ -43,7 +43,7 @@ class MaskedAutoencoder(NN.Module):
         self.negative_slope = model_params.get("negative_slope", 0.01)
         self.apply_batchnorm = model_params.get("apply_batchnorm", 0.01)
         self.apply_groupnorm = model_params.get("apply_groupnorm", 0.01)
-        self.conv_kernel = model_params.get("onv_kernel", 3)
+        self.conv_kernel = model_params.get("conv_kernel", 3)
         self.conv_stride = model_params.get("conv_stride", 1)
 
         assert self.activation_name in {"relu", "tanh", "leaky"}, "activation_function must be one of: 'relu', 'tanh', 'leaky'"

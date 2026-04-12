@@ -5,7 +5,6 @@ F = NN.functional
 class CNNDecoder(NN.Module):
     def __init__(
         self, 
-        input_dims: int,    # latent_dims
         input_channels: int,
         input_size: int,
         conv_kernel: int,
@@ -33,7 +32,7 @@ class CNNDecoder(NN.Module):
         self.hidden_layers = hidden_layers
         self.hidden_dims = hidden_dims
         self.hidden_factor = hidden_factor
-        self.latent_dims = input_dims        # input_dims == encoder latent_dims
+        self.latent_dims = latent_dims 
         self.activation_name = activation_name
         self.negative_slope = negative_slope
         self.apply_batchnorm = apply_batchnorm
@@ -168,7 +167,6 @@ def test_main(args):
     expected_output_shape = (batch_size, input_channels, input_size, input_size)
 
     model = CNNDecoder(
-        input_dims=latent_dims,
         input_channels=input_channels,
         input_size=input_size,
         hidden_layers=3,
