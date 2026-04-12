@@ -183,10 +183,9 @@ if __name__ == "__main__":
 
 # make sure it works so far:
 """
-mkdir -p data/galaxiesml && \
 python src/train_model.py \
 --config-file configs/train_config.json \
---input-folder data/galaxiesml \
+--input-folder data/galaxiesml_tiny \
 --output-folder experiments/train_model \
 --gpu-memory-fraction 0.9 \
 --num-cores 2 \
