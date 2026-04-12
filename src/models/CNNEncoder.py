@@ -166,13 +166,16 @@ class CNNEncoder(NN.Module):
     def forward(self, x):
         # ==================================================
         # CONTRIBUTION START: Encoder Forward Pass
-        # Contributor: <First> <Last>
+        # Contributor: Wen Yu
         # ==================================================
-
+        x = self.input_layer(x)
+        for layer in self.encoder_layers:
+            x = layer(x)
+        z = self.output_layer(x)
+        return z
         # ==================================================
         # CONTRIBUTION END: Encoder Forward Pass
         # ==================================================
-        return NotImplemented
 
 
 
@@ -199,7 +202,7 @@ def test_main(args):
     latent_dims = 128
 
     batch_input_shape = (batch_size, input_channels, input_size, input_size)
-    expected_encoder_shape = (batch_size, input_channels, latent_dims)
+    expected_encoder_shape = (batch_size, latent_dims)
 
     model = CNNEncoder(
         input_channels, 

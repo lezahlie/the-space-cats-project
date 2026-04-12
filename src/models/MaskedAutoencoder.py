@@ -100,13 +100,13 @@ class MaskedAutoencoder(NN.Module):
         z = None
         # ==================================================
         # CONTRIBUTION START: Encoder Reconstruction 
-        # Contributor: <First> <Last>
+        # Contributor: Wen Yu
         # ==================================================
-
+        z = self.encoder(x)
+        return z
         # ==================================================
         # CONTRIBUTION END: Encoder Reconstruction
         # ==================================================
-        return NotImplemented
     
 
 
