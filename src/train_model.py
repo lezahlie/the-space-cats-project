@@ -125,7 +125,7 @@ def main(args):
         args.gpu_memory_fraction,
         args.random_seed
     )
-
+    logger.info(f"Using device = {device}")
     fake_config ={
         "random_seed": args.random_seed,
         "device": device,

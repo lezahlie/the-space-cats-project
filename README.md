@@ -72,6 +72,12 @@
 
 ### B. Environment
 
+#### Google Colab Setup
+
+Please upload `the-space-cats-colab.ipynb` to google colab and follow the steps to setup
+
+#### Option 1: Conda install
+
 0. Make sure conda channel priority is strict
 
     ```bash

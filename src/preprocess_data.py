@@ -94,17 +94,26 @@ def main(args):
     transform = Normalize()
 
     dataset_dir = Path(args.input_folder)
-    dataset_file = "5x64x64_{}_with_morphology.hdf5"
+    dataset_file = "5x64x64_{}_reduced_*.hdf5"
 
-    train_path = dataset_dir / dataset_file.format("training")
+    train_matches = dataset_dir.glob(dataset_file.format("training"))
+    if not train_matches:
+        raise FileNotFoundError(f"No training file matched in {dataset_dir}")
+    train_path = next(train_matches)
     train_raw = GalaxiesMLDataset(train_path)
     transform.fit(train_raw)
-
     train_data = GalaxiesMLDataset(train_path, transform=transform)
-    valid_path = dataset_dir / dataset_file.format("validation")
+
+    valid_matches = dataset_dir.glob(dataset_file.format("validation"))
+    if not valid_matches:
+        raise FileNotFoundError(f"No validation file matched in {dataset_dir}")
+    valid_path = next(valid_matches)
     valid_data = GalaxiesMLDataset(valid_path, transform=transform)
 
-    test_path = dataset_dir / dataset_file.format("testing")
+    test_matches = dataset_dir.glob(dataset_file.format("testing"))
+    if not test_matches:
+        raise FileNotFoundError(f"No testing file matched in {dataset_dir}")
+    test_path = next(test_matches)
     test_data = GalaxiesMLDataset(test_path, transform=transform)
 
     PrepareDatasets(

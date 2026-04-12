@@ -13,7 +13,6 @@ dependencies:
   - scikit-learn
   - scikit-image
   - torchmetrics
-  - optuna
   - h5py
   - jsonschema
   - pandas
