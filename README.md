@@ -99,40 +99,69 @@
 
 2. Activate the project conda environment and add project path to `PYTHONPATH` 
     ```bash
-    conda activate space-cats-<device>
+    conda activate spacecats-<device>
     conda env config vars set PYTHONPATH="/path/to/the-space-cats-project${PYTHONPATH:+:$PYTHONPATH}"
     conda deactivate
-    conda activate space-cats-<device>
+    conda activate spacecats-<device>
     echo $PYTHONPATH
     ```
 
 
 ### C. Download Datasets
 
-Dataset download page: https://zenodo.org/records/11117528
+#### Reduced cleaned datasets
 
-- training download (3.4 GB): https://zenodo.org/records/11117528/files/5x64x64_training_with_morphology.hdf5?download=1
-    ```bash
-    mkdir -p data/galaxiesml && \
-    wget -c "https://zenodo.org/records/11117528/files/5x64x64_training_with_morphology.hdf5?download=1" -O ../data/galaxiesml/5x64x64_testing_with_morphology.hdf5
-    h5ls -r ../data/galaxiesml/5x64x64_training_with_morphology.hdf5 > ../data/galaxiesml/training_structure.txt
-    ```
-- validation dataset (16.9 GB): https://zenodo.org/records/11117528/files/5x64x64_training_with_morphology.hdf5?download=1
-    ```bash
-    mkdir -p data/galaxiesml && \
-    wget -c "https://zenodo.org/records/11117528/files/5x64x64_validation_with_morphology.hdf5?download=1" -O ../data/galaxiesml/5x64x64_testing_with_morphology.hdf5 && \\
-    h5ls -r ../data/galaxiesml/5x64x64_validation_with_morphology.hdf5 > ../data/galaxiesml/validation_structure.txt
-    ```
-- testing download (3.4 GB): https://zenodo.org/records/11117528/files/5x64x64_validation_with_morphology.hdf5?download=1
-    ```bash
-    mkdir -p data/galaxiesml && \
-    wget -c "https://zenodo.org/records/11117528/files/5x64x64_testing_with_morphology.hdf5?download=1" -O ../data/galaxiesml/5x64x64_testing_with_morphology.hdf5 && \\
-    h5ls -r ../data/galaxiesml/5x64x64_testing_with_morphology.hdf5 > ../data/galaxiesml/testing_structure.txt
-    ```
+1. Download any of the bundles from this link: https://gtvault-my.sharepoint.com/:f:/r/personal/lhorace3_gatech_edu/Documents/DLGroupProject_Datasets?csf=1&web=1&e=fL9OqB
+2. Make sure you create a `data` folder and extract the reduced dataset bundle there
+
+```bash
+cd path/to/the-space-cats-project 
+mkdir -p data
+tar -xvf path/to/galaxiesml_<size>.tar.gz -C data/
+```
+
+- `galaxiesml_tiny.tar.gz`: Good for debugging issues and just getting stuff working
+  - `5x64x64_training_reduced_tiny.hdf5`: N=1750
+  - `5x64x64_validation_reduced_tiny.hdf5`: N=500
+  - `5x64x64_testing_reduced_tiny.hdf5`: N=250
+  - total: N=2500
+
+- `galaxiesml_small.tar.gz`: Good for testing training/evaluation and tuning workflows
+  - `5x64x64_training_reduced_small.hdf5`: N=3500
+  - `5x64x64_validation_reduced_small.hdf5`: N=1000
+  - `5x64x64_testing_reduced_small.hdf5`: N=500
+  - total: N=5000
+
+- `galaxiesml_medium.tar.gz`: Good for final experimentation (unless large fits)
+  - `5x64x64_training_reduced_medium.hdf5`: N=17500
+  - `5x64x64_validation_reduced_medium.hdf5`: N=5000
+  - `5x64x64_testing_reduced_medium.hdf5`: N=2500
+  - total: N=25000
+
+- `galaxiesml_large.tar.gz`: Ideal size for final experimentation
+  - `5x64x64_training_reduced_large.hdf5`: N=35000
+  - `5x64x64_validation_reduced_large.hdf5`: N=10000
+  - `5x64x64_testing_reduced_large.hdf5`: N=5000
+  - total: N=50000
+
+
+
+> Each reduced dataset is packaged as tar gzip archive containing reduced training, validation, and testing HDF5 files.</br>
+>  In addition, each archive includes a metadata text file describing the internal HDF5 structure.</br>
+> You can regenerate the metadata text file by running `python src/inspect_data.py`
+
+#### Original raw datasets
+
+Dataset download page: https://zenodo.org/records/11117528
+- training download (16.9 GB, N=204573): https://zenodo.org/records/11117528/files/5x64x64_training_with_morphology.hdf5
+- validation dataset (3.4 GB, N=40914): https://zenodo.org/records/11117528/files/5x64x64_training_with_morphology.hdf5
+- testing download (3.4 GB, N=40914): https://zenodo.org/records/11117528/files/5x64x64_validation_with_morphology.hdf5
+
 
 > For more information go here: https://datalab.astro.ucla.edu/galaxiesml.html
 > - Note remember to add the citations on this page: https://datalab.astro.ucla.edu/galaxiesml.html
 > - Also for local testing lets just use one of the smaller datasets
+
 ### D. Preprocess the dataset
 
 ### E. Tune the model 
@@ -142,3 +171,5 @@ Dataset download page: https://zenodo.org/records/11117528
 ### G. Evaluate from saved model state
 
 ### H. Analyze and plot results
+
+tar -czf galaxiesml_raw.tar.gz galaxiesml_raw

@@ -185,10 +185,9 @@ if __name__ == "__main__":
 
 # make sure it works so far:
 """
-mkdir -p data/galaxiesml && \
 python src/tune_model.py \
 --config-file configs/tune_model_stage1.json \
---input-folder "data/galaxiesml" \
+--input-folder "data/galaxiesml_tiny" \
 --output-folder experiments/tune_model_stage1 \
 --num-cores 2 \
 --gpu-memory-fraction 0.9 \

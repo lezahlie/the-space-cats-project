@@ -68,11 +68,11 @@ class Normalize:
         Returns:
             train_data: _description_
         """
-        return NotImplementedError()
+        return NotImplemented
     
     def __call__(self, data):
 
-        return NotImplementedError()
+        return NotImplemented
 
     def inverse_transform(self, data, new_device=None):
         """transforms normalized data back to its original scale
@@ -83,7 +83,7 @@ class Normalize:
 
         """
 
-        return NotImplementedError()
+        return NotImplemented
 
 
 @log_execution_time
@@ -127,9 +127,8 @@ if __name__ == "__main__":
 # make sure it works so far:
 # returns error if datasets are not downloaded yet
 """
-mkdir -p data/galaxiesml && \
 python src/preprocess_data.py \
---input-folder data/galaxiesml \
+--input-folder data/galaxiesml_tiny \
 --output-folder data/preprocessed \
 --num-cores 2 \
 --debug

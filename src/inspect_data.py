@@ -1,12 +1,29 @@
 from urllib.request import urlretrieve
 from src.utils.common import h5py, Path
 
-OUT_DIR = Path("../data/galaxiesml")
+OUT_DIR = Path("../data/")
 
 FILES = {
-    "training": OUT_DIR / "5x64x64_training_with_morphology.hdf5",
-    "validation": OUT_DIR / "5x64x64_validation_with_morphology.hdf5",
-    "testing": OUT_DIR / "5x64x64_testing_with_morphology.hdf5"
+    "tiny" :{
+        "training": OUT_DIR / "galaxiesml_tiny" / "5x64x64_training_reduced_tiny.hdf5",
+        "validation": OUT_DIR  / "galaxiesml_tiny" /  "5x64x64_validation_reduced_tiny.hdf5",
+        "testing": OUT_DIR  / "galaxiesml_tiny" /  "5x64x64_testing_reduced_tiny.hdf5"
+    },
+    "small" :{
+        "training": OUT_DIR  / "galaxiesml_small" /  "5x64x64_training_reduced_small.hdf5",
+        "validation": OUT_DIR  / "galaxiesml_small" /  "5x64x64_validation_reduced_small.hdf5",
+        "testing": OUT_DIR  / "galaxiesml_small" /  "5x64x64_testing_reduced_small.hdf5"
+    },
+    "medium" :{
+        "training": OUT_DIR / "galaxiesml_medium" / "5x64x64_training_reduced_medium.hdf5",
+        "validation": OUT_DIR / "galaxiesml_medium" / "5x64x64_validation_reduced_medium.hdf5",
+        "testing": OUT_DIR / "galaxiesml_medium" / "5x64x64_testing_reduced_medium.hdf5"
+    },
+    "large" :{
+        "training": OUT_DIR / "galaxiesml_large" / "5x64x64_training_reduced_large.hdf5",
+        "validation": OUT_DIR / "galaxiesml_large" / "5x64x64_validation_reduced_large.hdf5",
+        "testing": OUT_DIR / "galaxiesml_large" / "5x64x64_testing_reduced_large.hdf5"
+    }
 }
 
 def dump_hdf5_structure(path: Path) -> Path:
@@ -46,8 +63,11 @@ def dump_hdf5_structure(path: Path) -> Path:
     return out_txt
 
 
-for name, out_path in FILES.items():
-    if not out_path.resolve():
-        print(f"Missing download for '{name}' in path: '{out_path}'")
-    structure_file = dump_hdf5_structure(out_path)
-    print(f"Structure written to: {structure_file}")
+for size, data_paths in FILES.items():
+    for split, path in data_paths.items():
+        if not path.exists():
+            print(f"Missing download for '{split}' in path: '{path}'")
+            continue
+        structure_file = dump_hdf5_structure(path)
+        print(f"Structure written to: {structure_file}")
+
