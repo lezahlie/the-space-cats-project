@@ -1,5 +1,5 @@
-from utils.logger import get_logger, set_logger_level, log_execution_time
-from utils.common import argparse, os, Path, pt, h5py, GalaxiesMLDataset
+from src.utils.logger import get_logger, set_logger_level, log_execution_time
+from src.utils.common import argparse, os, Path, pt, h5py, GalaxiesMLDataset
 
 def process_args():
     parser = argparse.ArgumentParser(description="Preprocess Dataset Executable", formatter_class= argparse.RawTextHelpFormatter)
@@ -115,7 +115,7 @@ def main(args):
     )
 
 if __name__ == "__main__":
-    from utils.logger import init_shared_logger
+    from src.utils.logger import init_shared_logger
     logger = init_shared_logger(__file__, log_stdout=True, log_stderr=True)
     try:
         pt.multiprocessing.set_sharing_strategy('file_system')
@@ -124,9 +124,10 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(e)
 
+# make sure it works so far:
+# returns error if datasets are not downloaded yet
 """
-make sure it works so far:
-
+mkdir -p data/galaxiesml && \
 python src/preprocess_data.py \
 --input-folder data/galaxiesml \
 --output-folder data/preprocessed \

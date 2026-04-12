@@ -1,8 +1,7 @@
-from utils.logger import get_logger, set_logger_level, log_execution_time
-logger = get_logger()
-from utils.common import argparse, os, Path, pt
-from utils.device import SetupDevice
-Dataloader=pt.utils.data.Dataloader
+from src.utils.logger import get_logger, set_logger_level, log_execution_time
+from src.utils.common import argparse, os, Path, pt
+from src.utils.device import SetupDevice
+DataLoader=pt.utils.data.DataLoader
 
 def process_args():
     parser = argparse.ArgumentParser(description="Tune Model Executable", formatter_class= argparse.RawTextHelpFormatter)
@@ -16,7 +15,8 @@ def process_args():
                 help="Output path/to/directory to save experiment results to | required")
     parser.add_argument('--config-file', dest="config_file", type=str, required=True, 
                 help="Input config file file path | required")
-    
+    parser.add_argument('--gpu-device-list', dest='gpu_device_list', type=int, nargs='+', default=[0], 
+                help='Specify which GPU(s) to use; Provide multiple GPUs as space-separated values, e.g., "0 1" | default: 0 (if CUDA is available)')
     parser.add_argument('--gpu-memory-fraction', dest='gpu_memory_fraction', type=float, default=0.5,
                 help='Fraction of GPU memory to allocate per process | default: 0.5 (if CUDA is available)')
     parser.add_argument('--cpu-device-only', dest="cpu_device_only", action='store_true',
@@ -69,6 +69,22 @@ class HyperparameterSearch:
         self.device = device
         self.config = config
 
+    def load_dataset(self, dataset):
+        """load the datasets from preprocessed files and batch them
+
+        Args:
+            dataset_path (_type_): _description_
+        """
+
+        return DataLoader(dataset, 
+            batch_size=self.batch_size, 
+            shuffle=False, 
+            persistent_workers=True, 
+            num_workers=self.num_cores, 
+            worker_init_fn=self._worker_init_fn,
+            collate_fn=self._collate_dict)
+    
+
     def run_search(self):
         """placeholder function for hyperparameter searching
         you can delete this and/or add whatever you want.
@@ -76,10 +92,10 @@ class HyperparameterSearch:
         Returns:
             _type_: _description_
         """
-        return NotImplementedError()
+        return NotImplemented
 
     def train(self, model, train_loader):
-        return NotImplementedError()
+        return NotImplemented
         
     @pt.no_grad()
     def evaluate(self, model, valid_or_test_loader):
@@ -94,13 +110,15 @@ class HyperparameterSearch:
         Returns:
             _type_: _description_
         """
-        return NotImplementedError()
+        return NotImplemented
 
 
 @log_execution_time
 def main(args):
     if args.debug:
         set_logger_level(10)
+
+    logger = get_logger()
 
     device = SetupDevice.setup_torch_device(
         args.num_cores,
@@ -111,15 +129,38 @@ def main(args):
     )
 
     fake_config ={
-        "hidden_layers": [1, 2, 3], 
-        "hidden_FACTOR": 3, 
-        "hidden_dims": 128, 
-        "latent_dims": 64, 
-        "conv_kernel": 3, 
-        "conv_stride": 1, 
-        "earlystop": True, 
-        "epoch_patience": 20, 
-        "min_delta": 0.0,
+        "random_seed": args.random_seed,
+        "device": device,
+
+        "input_shape": None,    # need to derive shape from a single dataset sample, e.g., (5, 64, 64)
+
+        "mask_ratio": 0.0,
+
+        "ssim_loss_weight": 0.0,
+
+        "num_epochs": 500,
+        "batch_size": 32,
+        
+        "learn_rate": 1e-4,
+        "weight_decay": 0.0,
+        "optim_beta1": 0.9,
+        "optim_beta2": 0.99,
+
+        "hidden_factor": 2.0,
+        "hidden_layers": 3,
+        "hidden_dims": 256,
+        "latent_dims": 128,
+
+        "activation_function": "relu",
+        "negative_slope": 0.01,     # for activation_function "leaky"
+        "apply_batchnorm": False,
+        "apply_groupnorm": False,
+        "conv_kernel": 3,
+        "conv_stride": 1,
+
+        "enable_earlystop": True,
+        "earlystop_patience": 20,
+        "earlystop_min_delta": 0.0
     }
 
     search = HyperparameterSearch(fake_config, device)
@@ -132,7 +173,7 @@ def main(args):
     """
 
 if __name__ == "__main__":
-    from utils.logger import init_shared_logger
+    from src.utils.logger import init_shared_logger
     logger = init_shared_logger(__file__, log_stdout=True, log_stderr=True)
     try:
         pt.multiprocessing.set_sharing_strategy('file_system')
@@ -141,14 +182,15 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(e)
 
-'''
-make sure it works so far:
-0
+
+# make sure it works so far:
+"""
+mkdir -p data/galaxiesml && \
 python src/tune_model.py \
 --config-file configs/tune_model_stage1.json \
---input-folder data/galaxiesml \
+--input-folder "data/galaxiesml" \
 --output-folder experiments/tune_model_stage1 \
 --num-cores 2 \
 --gpu-memory-fraction 0.9 \
 --debug
-'''
+"""

@@ -7,6 +7,11 @@ from functools import wraps
 from inspect import stack
 from sys import stderr, stdout, exit as sys_exit
 
+# ==================================================
+# CONTRIBUTION START: Logger Setup and Decorator
+# Contributor: Leslie Horace
+# ==================================================
+
 class LoggerHandler:
     def __init__(self, logger):
         self.logger = logger
@@ -147,3 +152,7 @@ def log_execution_time(func):
         logger.info(f"Elapsed time for {func.__name__} is {elapsed_time:.6f} seconds")
         return result
     return wrapper
+
+# ==================================================
+# CONTRIBUTION END: Logger Setup and Decorator
+# ==================================================

@@ -1,6 +1,6 @@
-from utils.logger import get_logger, set_logger_level, log_execution_time
-from utils.common import argparse, os, Path, pt, np, random
-from utils.device import SetupDevice
+from src.utils.logger import get_logger, set_logger_level, log_execution_time
+from src.utils.common import argparse, os, Path, pt, np, random
+from src.utils.device import SetupDevice
 DataLoader=pt.utils.data.DataLoader
 
 def process_args():
@@ -78,7 +78,7 @@ class ModelTrainer:
 
     @staticmethod
     def _collate_batch(batch):
-        return NotImplementedError()
+        return NotImplemented
     
     def load_dataset(self, dataset):
         """load the datasets from preprocessed files and batch them
@@ -97,10 +97,10 @@ class ModelTrainer:
     
 
     def batch_dataset(self, dataset):
-        return NotImplementedError()
+        return NotImplemented
     
     def train(self, model, train_loader):
-        return NotImplementedError()
+        return NotImplemented
         
     @pt.no_grad()
     def evaluate(self, model, valid_or_test_loader):
@@ -117,6 +117,7 @@ def main(args):
         set_logger_level(10)
 
     logger = get_logger()
+    
     device = SetupDevice.setup_torch_device(
         args.num_cores,
         args.cpu_device_only,
@@ -126,15 +127,38 @@ def main(args):
     )
 
     fake_config ={
-        "hidden_layers": 3, 
-        "hidden_layers": 3, 
-        "hidden_dims": 128, 
-        "latent_dims": 64, 
-        "conv_kernel": 3, 
-        "conv_stride": 1, 
-        "earlystop": True, 
-        "epoch_patience": 20, 
-        "min_delta": 0.0,
+        "random_seed": args.random_seed,
+        "device": device,
+
+        "input_shape": None,    # need to derive shape from a single dataset sample, e.g., (5, 64, 64)
+
+        "mask_ratio": 0.0,
+        
+        "ssim_loss_weight": 0.0,
+
+        "num_epochs": 500,
+        "batch_size": 32,
+        
+        "learn_rate": 1e-4,
+        "weight_decay": 0.0,
+        "optim_beta1": 0.9,
+        "optim_beta2": 0.99,
+
+        "hidden_factor": 2.0,
+        "hidden_layers": 3,
+        "hidden_dims": 256,
+        "latent_dims": 128,
+
+        "activation_function": "relu",
+        "negative_slope": 0.01,     # for activation_function "leaky"
+        "apply_batchnorm": False,
+        "apply_groupnorm": False,
+        "conv_kernel": 3,
+        "conv_stride": 1,
+
+        "enable_earlystop": True,
+        "earlystop_patience": 20,
+        "earlystop_min_delta": 0.0
     }
 
     train = ModelTrainer(fake_config, device)
@@ -147,7 +171,7 @@ def main(args):
     """
 
 if __name__ == "__main__":
-    from utils.logger import init_shared_logger
+    from src.utils.logger import init_shared_logger
     logger = init_shared_logger(__file__, log_stdout=True, log_stderr=True)
     try:
         pt.multiprocessing.set_sharing_strategy('file_system')
@@ -156,12 +180,13 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(e)
 
-"""
-make sure it works so far:
 
+# make sure it works so far:
+"""
+mkdir -p data/galaxiesml && \
 python src/train_model.py \
 --config-file configs/train_config.json \
---input-folder data \
+--input-folder data/galaxiesml \
 --output-folder experiments/train_model \
 --gpu-memory-fraction 0.9 \
 --num-cores 2 \

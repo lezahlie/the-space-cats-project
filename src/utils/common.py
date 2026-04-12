@@ -1,8 +1,9 @@
 """
 Utilities commonly used anywhere such as python module, helper functions, file I/O for hdf5, json, yaml, csv, etc
 """
-from utils.logger import get_logger
+from src.utils.logger import get_logger
 import os
+import sys
 import argparse
 import glob
 import re
@@ -14,15 +15,22 @@ import h5py
 import scipy
 import torch as pt
 import numpy as np
+import pandas as pd
 import warnings
 import traceback
 import gc
 from pathlib import Path
 from typing import Any, Literal, List, Tuple, Dict, Type, Optional
+from types import SimpleNamespace
+
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# ==================================================
+# CONTRIBUTION START: Lazy loader for GalaxiesMLDataset
+# Contributor: Leslie Horace
+# ==================================================
 
 class GalaxiesMLDataset(pt.utils.data.Dataset):
     def __init__(self, hdf5_path, image_key="image", transform=None):
@@ -54,3 +62,7 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
             x = self.transform(x)
 
         return x
+
+# ==================================================
+# CONTRIBUTION End: Lazy loader for GalaxiesMLDataset
+# ==================================================

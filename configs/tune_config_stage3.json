@@ -19,7 +19,10 @@
 
     "conv_stride": 1,
     "hidden_factor": 2.0,
-
+    "negative_slope": 0.01,
+    "apply_batchnorm": false,
+    "apply_groupnorm": false,
+    
     "enable_earlystop": true,
     "earlystop_patience": 20,
     "earlystop_min_delta": 0.0

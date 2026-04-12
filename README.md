@@ -97,10 +97,15 @@
     > mamba env create -f <environment.yml>
     > ```
 
-2. Activate the project conda environment and setup environment variables
+2. Activate the project conda environment and add project path to `PYTHONPATH` 
     ```bash
     conda activate space-cats-<device>
+    conda env config vars set PYTHONPATH="/path/to/the-space-cats-project${PYTHONPATH:+:$PYTHONPATH}"
+    conda deactivate
+    conda activate space-cats-<device>
+    echo $PYTHONPATH
     ```
+
 
 ### C. Download Datasets
 

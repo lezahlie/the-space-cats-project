@@ -1,5 +1,10 @@
-from utils.logger import get_logger
-from utils.common import os, pt, np, gc, random
+from src.utils.logger import get_logger
+from src.utils.common import os, pt, np, gc, random
+
+# ==================================================
+# CONTRIBUTION START: Deterministic SetupDevice Class
+# Contributor: Leslie Horace
+# ==================================================
 
 class SetupDevice:
     @staticmethod
@@ -121,3 +126,7 @@ class SetupDevice:
         SetupDevice.validate_modules(device)     
 
         return device 
+
+# ==================================================
+# CONTRIBUTION End: Deterministic SetupDevice Class
+# ==================================================

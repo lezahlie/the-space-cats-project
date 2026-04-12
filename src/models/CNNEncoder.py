@@ -1,21 +1,249 @@
-import torch as pt
+from src.utils.common import pt
 NN = pt.nn
 F = NN.functional
+
 
 class CNNEncoder(NN.Module):
     def __init__(
         self, 
+        input_channels: int,
+        input_size: int,
         hidden_layers: int=3, 
         hidden_dims: int=128, 
-        latent_dims: int=64, 
         hidden_factor: float=2.0,
-        activation: pt.Module=NN.ReLU, 
-    ): super(CNNEncoder, self).__init__()
+        latent_dims: int=64, 
+        activation_name: str = "relu",
+        negative_slope: float = 0.01,
+        apply_batchnorm: bool = False,
+        apply_groupnorm: bool = False,
+        conv_kernel: int = 3,
+        conv_stride: int = 1,
+    ): 
+        super(CNNEncoder, self).__init__()
 
-    """initialize the encoder
-    """
+        # ==================================================
+        # CONTRIBUTION START: Encoder Initialization Part 2
+        # Contributor: Leslie Horace
+        # ==================================================
 
-    def forward(self):
-        return NotImplementedError()
+        # initialize input channels and dims
+        self.input_channels = input_channels
+        # assume inputs are square so input height == width
+        self.input_size = input_size
 
+        # initialize layer settings
+        self.hidden_layers = hidden_layers
+        self.hidden_dims = hidden_dims
+        self.latent_dims = latent_dims
+        self.hidden_factor = hidden_factor
+
+        self.apply_batchnorm = apply_batchnorm
+        self.apply_groupnorm = apply_groupnorm
+        self.activation_name = activation_name
+        self.negative_slope = negative_slope
+
+        # initialize kernel settings
+        self.conv_kernel = conv_kernel
+        self.conv_stride = conv_stride
+        # padding is the simple equation for square input dims
+        self.conv_padding = (self.conv_kernel - self.conv_stride) // 2
+
+        # compute hidden layer dims and validate
+        self.hidden_per_layer = [int(self.hidden_dims / (self.hidden_factor ** i)) for i in range(self.hidden_layers)]
+        if self.hidden_per_layer[-1] < 4:
+            raise ValueError(f"hidden_factor={self.hidden_factor} is too large to reduce hidden_dims={self.hidden_dims} across hidden_layers={self.hidden_layers}\nComputed hidden dims: {self.hidden_per_layer}")
+
+        compute_output_size = lambda x: ((x - self.conv_kernel + 2 * self.conv_padding) // self.conv_stride) + 1
+
+        # initialize input layer: Conv2D => GroupNorm/BatchNorm2D/None => Activation
+        self.input_layer = NN.Sequential(
+            NN.Conv2d(
+                in_channels=self.input_channels,
+                out_channels=self.hidden_per_layer[0],
+                kernel_size=self.conv_kernel,
+                stride=self.conv_stride,
+                padding=self.conv_padding,
+            ),
+            self._get_norm_layer(self.hidden_per_layer[0]),
+            self._get_activation(),
+        )
+        # compute output size based on input size
+        output_size = compute_output_size(self.input_size)
+
+        # initialize encoder layers: input_layer => encoder_layers
+        self.encoder_layers = NN.ModuleList()
+        for i in range(1, self.hidden_layers):
+            in_chan = self.hidden_per_layer[i - 1]
+            out_chan = self.hidden_per_layer[i]
+
+            # hidden layer: Conv2D => GroupNorm/BatchNorm2D/None => Activation
+            self.encoder_layers.append(
+                NN.Sequential(
+                    NN.Conv2d(
+                        in_channels=in_chan,
+                        out_channels=out_chan,
+                        kernel_size=self.conv_kernel,
+                        stride=self.conv_stride,
+                        padding=self.conv_padding,
+                    ),
+                    self._get_norm_layer(out_chan),
+                    self._get_activation(),
+                )
+            )
+            output_size = compute_output_size(output_size)
+
+        # compute the flattened spatial dims of the hidden output
+        self.output_size_HxW = output_size ** 2
+
+        # init encoder output layer: project hidden_output => latent_z
+        # Flatten all dims except the batch
+        # Linear Input Shape: (N, C * H * W) 
+        # Linear Output Shape: (N, L), L=self.latent_dims
+        self.output_layer = self.output_layer = NN.Sequential(
+            NN.Flatten(start_dim=1),    
+            NN.Linear(                  
+                in_features=self.hidden_per_layer[-1] * self.output_size_HxW,
+                out_features=self.latent_dims,
+            )   
+        )
+        
+        # ==================================================
+        # CONTRIBUTION END: Encoder Initialization Part 2
+        # ==================================================
+
+    def _get_activation(self):
+        # ==================================================
+        # CONTRIBUTION START: Encoder Activation Initialization
+        # Contributor: Leslie Horace
+        # ==================================================
+        # initialize element wise activation
+        if self.activation_name == "relu":
+            return NN.ReLU()
+        elif self.activation_name == "leaky":
+            return NN.LeakyReLU(negative_slope=self.negative_slope)
+        elif self.activation_name == "tanh":
+            return NN.Tanh()
+        else:
+            raise ValueError(f"unsupported activation_name '{self.activation_name}'")
+        
+
+    def _get_norm_layer(self, out_chan):
+        # ==================================================
+        # CONTRIBUTION START: Encoder Activation Initialization
+        # Contributor: Leslie Horace
+        # ==================================================
+        if self.apply_batchnorm:
+            return NN.BatchNorm2d(out_chan)
+        elif self.apply_groupnorm:
+            num_groups = min(8, out_chan)
+            while out_chan % num_groups != 0:
+                num_groups -= 1
+            return NN.GroupNorm(num_groups, out_chan)
+        return NN.Identity()
+        # ==================================================
+        # CONTRIBUTION END: Norm Layer Initialization Helper
+        # ==================================================
+
+    def _init_weights(self, module):
+        # ==================================================
+        # CONTRIBUTION START: Encoder Weight Initialization
+        # Contributor: Leslie Horace
+        # ==================================================
+        if not isinstance(module, (NN.Conv2d, NN.ConvTranspose2d, NN.Linear)):
+            return
+        if self.activation_name == "relu":
+            NN.init.kaiming_normal_(module.weight, nonlinearity="relu", generator=self.generator)
+        elif self.activation_name == "leaky":
+            NN.init.kaiming_normal_(module.weight, a=self.negative_slope, nonlinearity="leaky_relu")
+        elif self.activation_name == "tanh":
+            NN.init.xavier_normal_(module.weight)
+        if module.bias is not None:
+            NN.init.zeros_(module.bias)
+        # ==================================================
+        # CONTRIBUTION END: Encoder Weight Initialization
+        # ==================================================
     
+    def forward(self, x):
+        # ==================================================
+        # CONTRIBUTION START: Encoder Forward Pass
+        # Contributor: <First> <Last>
+        # ==================================================
+
+        # ==================================================
+        # CONTRIBUTION END: Encoder Forward Pass
+        # ==================================================
+        return NotImplemented
+
+
+
+
+
+def test_main(args):
+    from src.utils.device import SetupDevice
+    from src.utils.logger import set_logger_level, get_logger
+
+    set_logger_level(10)
+    logger = get_logger()
+
+    device = SetupDevice.setup_torch_device(
+        args.num_cores,
+        args.cpu_device_only,
+        args.gpu_device_list,
+        args.gpu_memory_fraction,
+        args.random_seed
+    )
+
+    batch_size = 20
+    input_channels = 5
+    input_size = 64
+    latent_dims = 128
+
+    batch_input_shape = (batch_size, input_channels, input_size, input_size)
+    expected_encoder_shape = (batch_size, input_channels, latent_dims)
+
+    model = CNNEncoder(
+        input_channels, 
+        input_size, 
+        hidden_layers = 3,
+        hidden_dims=128,
+        hidden_factor=2.0,
+        latent_dims=latent_dims,
+        activation_name="relu",
+        negative_slope= 0.01,
+        apply_batchnorm=False,
+        apply_groupnorm=False,
+        conv_kernel=5,
+        conv_stride=1
+    )
+
+
+
+    dummy_input_batch = pt.randn(batch_input_shape)
+    logger.debug(f"Batch Input shape: {dummy_input_batch.shape}")
+
+    logger.debug(f"Encoder Input Layer:\n{model.input_layer}")
+    logger.debug(f"Encoder Hidden Layers:\n{model.encoder_layers}")
+    logger.debug(f"Encoder Output Layer:\n{model.output_layer}")
+
+
+    encoder_output = model(dummy_input_batch)
+    if encoder_output == NotImplemented:
+        logger.debug("CNNEncoder not implemented yet")
+        return
+
+    logger.debug(f"Encoder output shape: {encoder_output.shape}, expected_shape: {expected_encoder_shape}")
+
+
+if __name__ == "__main__":
+    from src.utils.logger import init_shared_logger
+    from src.utils.common import pt, SimpleNamespace
+    init_shared_logger(__file__, log_stdout=True, log_stderr=True)
+    fake_args = SimpleNamespace(
+        num_cores = 1,
+        cpu_device_only = False,
+        gpu_device_list = [0],
+        gpu_memory_fraction = 0.5,
+        random_seed = 42
+    )
+
+    test_main(fake_args)

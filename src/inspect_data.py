@@ -1,5 +1,5 @@
 from urllib.request import urlretrieve
-from utils.common import h5py, Path
+from src.utils.common import h5py, Path
 
 OUT_DIR = Path("../data/galaxiesml")
 
