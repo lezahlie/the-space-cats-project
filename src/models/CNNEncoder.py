@@ -106,7 +106,9 @@ class CNNEncoder(NN.Module):
                 out_features=self.latent_dims,
             )   
         )
-        
+
+        # weight initialization — apply AFTER all layers are built
+        self.apply(self._init_weights)
         # ==================================================
         # CONTRIBUTION END: Encoder Initialization Part 2
         # ==================================================
@@ -152,13 +154,14 @@ class CNNEncoder(NN.Module):
         if not isinstance(module, (NN.Conv2d, NN.ConvTranspose2d, NN.Linear)):
             return
         if self.activation_name == "relu":
-            NN.init.kaiming_normal_(module.weight, nonlinearity="relu", generator=self.generator)
+            NN.init.kaiming_normal_(module.weight, nonlinearity="relu")
         elif self.activation_name == "leaky":
             NN.init.kaiming_normal_(module.weight, a=self.negative_slope, nonlinearity="leaky_relu")
         elif self.activation_name == "tanh":
             NN.init.xavier_normal_(module.weight)
         if module.bias is not None:
             NN.init.zeros_(module.bias)
+            
         # ==================================================
         # CONTRIBUTION END: Encoder Weight Initialization
         # ==================================================
