@@ -1,6 +1,7 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
 from src.utils.common import argparse, os, Path, pt, np, random
 from src.utils.device import SetupDevice
+from src.preprocess_data import PrepareDatasets
 DataLoader=pt.utils.data.DataLoader
 
 def process_args():
@@ -10,7 +11,7 @@ def process_args():
                 help="Enables debug option and verbose printing | default: Off")
     parser.add_argument('--random-seed', dest='random_seed', type=int, default=42,
                 help="Random seed for selecting samples | default: None")
-    parser.add_argument('--input-folder', dest="input_folder", type=str, required="../data/galaxiesml", 
+    parser.add_argument('--input-folder', dest="input_folder", type=str, required=True, 
                 help="Input path/to/directory where the preprocessed datasets are saved | required")
     parser.add_argument('--output-folder', dest="output_folder", type=str, required=True,  
                 help="Output path/to/directory to save experiment results to | required")
@@ -57,6 +58,8 @@ class ModelTrainer:
     def __init__(
         self, 
         config, 
+        input_folder,
+        output_folder,
         device = "cuda" if pt.cuda.is_available() else "cpu"
     ):
         """_summary_
@@ -69,46 +72,28 @@ class ModelTrainer:
         """
         self.device = device
         self.config = config
-
-    @staticmethod
-    def _worker_init_fn(worker_id):
-        base_seed = int(pt.initial_seed()) % 2**32
-        np.random.seed(base_seed + worker_id)
-        random.seed(base_seed + worker_id)
-
-    @staticmethod
-    def _collate_batch(batch):
-        return NotImplemented
+        self.batch_size = config.get("batch_size", 32)
+        self.input_folder = Path(input_folder)
+        self.output_folder = Path(output_folder)
     
-    def load_dataset(self, dataset):
-        """load the datasets from preprocessed files and batch them
+        self.dataloaders_dir = self.input_folder / f"batch_size_{self.batch_size}"
+        self.train_loader = pt.load(self.dataloaders_dir / "train_dataloader.pth")
+        self.valid_loader = pt.load(self.dataloaders_dir / "valid_dataloader.pth")
+        self.test_loader = pt.load(self.dataloaders_dir / "test_dataloader.pth")
 
-        Args:
-            dataset_path (_type_): _description_
-        """
+    def train(self, model):
+        if not model.training:
+            model.training()
 
-        return DataLoader(dataset, 
-            batch_size=self.batch_size, 
-            shuffle=False, 
-            persistent_workers=True, 
-            num_workers=self.num_cores, 
-            worker_init_fn=self._worker_init_fn,
-            collate_fn=self._collate_dict)
-    
-
-    def batch_dataset(self, dataset):
-        return NotImplemented
-    
-    def train(self, model, train_loader):
         return NotImplemented
         
     @pt.no_grad()
-    def evaluate(self, model, valid_or_test_loader):
+    def evaluate(self, model):
         """run validation"""
         if model.training:
             model.eval()
 
-        raise NotImplementedError
+        raise NotImplemented
 
     
 @log_execution_time
@@ -185,7 +170,7 @@ if __name__ == "__main__":
 """
 python src/train_model.py \
 --config-file configs/train_config.json \
---input-folder data/galaxiesml_tiny \
+--input-folder data/preprocessed/galaxiesml_tiny \
 --output-folder experiments/train_model \
 --gpu-memory-fraction 0.9 \
 --num-cores 2 \

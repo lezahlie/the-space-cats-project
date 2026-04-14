@@ -1,5 +1,5 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, Path, pt, h5py, np, json, GalaxiesMLDataset
+from src.utils.common import argparse, os, Path, pt, h5py, np, json, GalaxiesMLDataset, SimpleNamespace
 
 def process_args():
     parser = argparse.ArgumentParser(description="Preprocess Dataset Executable", formatter_class= argparse.RawTextHelpFormatter)
@@ -16,10 +16,12 @@ def process_args():
                 help="Number of cpu cores (tasks) to run in parallel. If multi-threading is enabled, max threads is set to (num_tasks * 2) | default: 1")
     parser.add_argument('--batch-size', dest="batch_size", type=int, default=32, 
                 help="Batch size for DataLoaders | default: 32")
-                
-    """
-    please add the remaining arguments you need to do the things
-    """
+    parser.add_argument('--mask-ratio', dest="mask_ratio", type=float, default=0.0, 
+                help="Mask ratio between 0.0 and 1.0, which is the ratio of pixels to mask | default: 0.0")
+    parser.add_argument('--mask-seed', dest="mask_seed", type=int, default=20, 
+                help=("Mask seed to randomly select the a channel-wise origin to apply the mask;"
+                        "Seed increments by +1 to select different origins per image sample. | default: 20"))
+    
     args = parser.parse_args()
     
     if not (1 <= args.num_cores < os.cpu_count()):
@@ -30,11 +32,9 @@ def process_args():
         raise ValueError(f"[--output-folder] '{args.output_folder}' must have a length between [1, 255]")
     if not (1 <= args.batch_size <= 4096):
         raise ValueError(f"[--batch-size] must be a INT between [1, 4096]")
+    if not (0.0 <= args.mask_ratio < 1.0):
+        raise ValueError(f"[--mask-ratio] must be a FLOAT between [0.0, 1.0)")
 
-    """
-    please validate the arguments you added so it breaks now instead of later
-    """
-        
     return args
 
 
@@ -67,19 +67,32 @@ class PrepareDatasets:
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            generator=g
+            generator=g,
+            collate_fn = self.collate_batch
         )
         self.valid_dataloader = pt.utils.data.DataLoader(
             dataset=self.valid_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            collate_fn = self.collate_batch
         )
         self.test_dataloader = pt.utils.data.DataLoader(
             dataset=self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            collate_fn = self.collate_batch
+        )
+
+    @staticmethod
+    def collate_batch(batch):
+        return SimpleNamespace(
+            masked_image=pt.stack([item[0] for item in batch], dim=0),
+            target_image=pt.stack([item[1] for item in batch], dim=0),
+            masked_map=pt.stack([item[2] for item in batch], dim=0),
+            specz_redshift=pt.stack([item[3] for item in batch], dim=0),
+            original_id=[item[4] for item in batch],
         )
 
     def validate(self):
@@ -89,19 +102,29 @@ class PrepareDatasets:
             "validation": self.valid_dataloader,
             "testing": self.test_dataloader
         }
-
+        
         for split, loader in splits.items():
-            image, specz, original_id = next(iter(loader))
-            assert image.ndim == 4 and image.shape[1:] == (5, 64, 64), (
-                f"[{split}] image shape {tuple(image.shape)}, expected (N, 5, 64, 64)")
-            assert image.dtype == pt.float32, (
-                f"[{split}] image dtype {image.dtype}, expected float32")
-            assert specz.ndim == 1 and specz.dtype == pt.float32, (
-                f"[{split}] specz shape/dtype mismatch — got shape {tuple(specz.shape)}, dtype {specz.dtype}")
-            assert isinstance(original_id, (list, tuple)) and isinstance(original_id[0], str), (
-                f"[{split}] original_id should be a list[str], got {type(original_id)}")
+            batch = next(iter(loader))
 
-            finite = image[pt.isfinite(image)]
+            assert batch.masked_image.ndim == 4 and batch.masked_image.shape[1:] == (5, 64, 64), (
+                f"[{split}] masked_image shape {tuple(batch.masked_image.shape)}, expected (N, 5, 64, 64)")
+            assert batch.masked_map.ndim == 4 and batch.masked_map.shape[1:] == (1, 64, 64), (
+                f"[{split}] masked_map shape {tuple(batch.masked_map.shape)}, expected (N, 5, 64, 64)")
+            assert batch.masked_map.dtype == pt.float32, (
+                f"[{split}] masked_map dtype {batch.masked_map.dtype}, expected float32")
+            assert batch.masked_image.dtype == pt.float32, (
+                f"[{split}] masked_image dtype {batch.masked_image.dtype}, expected float32")
+    
+            assert batch.target_image.ndim == 4 and batch.target_image.shape[1:] == (5, 64, 64), (
+                f"[{split}] image shape {tuple(batch.target_image.shape)}, expected (N, 5, 64, 64)")
+            assert batch.target_image.dtype == pt.float32, (
+                f"[{split}] image dtype {batch.target_image.dtype}, expected float32")
+            assert batch.specz_redshift.ndim == 1 and batch.specz_redshift.dtype == pt.float32, (
+                f"[{split}] specz shape/dtype mismatch — got shape {tuple(batch.specz_redshift.shape)}, dtype {batch.specz_redshift.dtype}")
+            assert isinstance(batch.original_id, (list, tuple)) and isinstance(batch.original_id[0], str), (
+                f"[{split}] original_id should be a list[str], got {type(batch.original_id)}")
+
+            finite = batch.target_image[pt.isfinite(batch.target_image)]
             img_min = finite.min().item() if len(finite) > 0 else 0.0
             img_max = finite.max().item() if len(finite) > 0 else 1.0
             assert img_min >= -1e-4, (
@@ -110,19 +133,31 @@ class PrepareDatasets:
                 f"[{split}] image max {img_max:.6f} is above 1.0")
 
             if split == 'train':
-                restored = self.transform.inverse_transform(image)
+                restored = self.transform.inverse_transform(batch.masked_image)
                 logger.info(
                     f"Inverse transform check — restored pixel range: "
                     f"[{restored.min():.4f}, {restored.max():.4f}]"
                 )
 
+            mask_bool = (batch.masked_map == 1.0).expand_as(batch.masked_image)
+            assert pt.all(batch.masked_image[mask_bool] == 0.0), (
+                "Masked region is not all 0.0 in masked_image")
+            assert pt.all((batch.masked_image[~mask_bool] >= 0.0) & (batch.masked_image[~mask_bool] <= 1.0)), (
+                "Unmasked region contains values outside [0.0, 1.0]")
+
             logger.info(
-                f"[{split}] image={tuple(image.shape)} dtype={image.dtype} "
+                f"[{split}] image={tuple(batch.target_image.shape)} dtype={batch.target_image.dtype} "
                 f"range=[{img_min:.4f}, {img_max:.4f}] | "
-                f"specz={tuple(specz.shape)} | "
-                f"original_id[0]='{original_id[0]}'"
+                f"specz={tuple(batch.specz_redshift.shape)} | "
+                f"original_id[0]='{batch.original_id[0]}'"
             )
 
+        with h5py.File(self.train_dataset.hdf5_path, "r") as f:
+            raw_image = pt.from_numpy(f[self.train_dataset.IMAGE_KEY][0].astype(np.float32))
+        norm_image = self.transform(raw_image)
+        restored_image = self.transform.inverse_transform(norm_image)
+        assert pt.allclose(raw_image, restored_image, atol=1e-5, rtol=1e-5)
+        
         logger.info("All dataloaders validated successfully")
 
     def save(self):
@@ -159,6 +194,18 @@ class PrepareDatasets:
                 "batch_size": self.batch_size,
                 "num_workers": self.num_workers,
                 "random_seed": self.random_seed,
+            },
+            "mask_settings": {
+                "apply_mask": self.train_dataset.apply_mask,
+                "mask_ratio": self.train_dataset.mask_ratio,
+                "mask_seed": self.train_dataset.mask_seed,
+            },
+            "sample_tensors": {
+                "masked_image": "Encoder x-input, 2d normalized image with random square masking (if enabled)",
+                "target_image": "Decoder y-target, 2d normalized image",
+                "masked_map": "Binary mask, where the masked pixels are 1.0",
+                "specz_redshift": "Downstream regression target, normalized scalar",
+                "original_id": "Original id from the non-reduced raw hdf5 dataset"
             },
             "image_shape": list(self.train_dataset.sample_shape),
         }
@@ -281,21 +328,38 @@ class Normalize:
         if new_device is not None:
             restored = restored.to(new_device)
         return restored
-    
+
+
 class PrepareDataset(pt.utils.data.Dataset):
     """PyTorch Dataset for GalaxiesML HDF5 files.
-    Returns (image, specz_redshift, original_id) per sample.
+    If 0.0 < mask_ratio < 1.0: Returns(masked_image, mask_map, image, specz_redshift, original_id) per sample.
+    Otherwise no masking: Returns (image, specz_redshift, original_id) per sample.
     """
 
     IMAGE_KEY = 'image'
     SPECZ_KEY = 'specz_redshift'
     ID_KEY = 'object_id'
 
-    def __init__(self, hdf5_path, transform=None, max_samples=None):
+    def __init__(self, hdf5_path, transform=None, max_samples=None, 
+                    mask_ratio=0.0, mask_seed=10):
+
         self.hdf5_path = str(hdf5_path)
         self.transform = transform
         self.max_samples = max_samples
         self.file = None
+
+        # ==================================================
+        # CONTRIBUTION START: Random Masking Initialization
+        # Contributor: Leslie Horace
+        # ==================================================
+
+        self.mask_ratio = mask_ratio
+        self.mask_seed = mask_seed
+        self.apply_mask = 0.0 < self.mask_ratio < 1.0
+
+        # ==================================================
+        # CONTRIBUTION End: Random Masking Initialization
+        # ==================================================
 
         with h5py.File(self.hdf5_path, 'r') as f:
             if self.IMAGE_KEY not in f:
@@ -309,6 +373,56 @@ class PrepareDataset(pt.utils.data.Dataset):
                 raise KeyError(f"'{self.SPECZ_KEY}' dataset not found in {self.hdf5_path}")
             if self.ID_KEY not in f:
                 raise KeyError(f"'{self.ID_KEY}' dataset not found in {self.hdf5_path}")
+
+    # ==================================================
+    # CONTRIBUTION START: Random Masking Function
+    # Contributor: Leslie Horace
+    # ==================================================
+
+    def _apply_square_mask(self, image: pt.Tensor, idx: int):
+        if image.ndim != 3:
+            raise ValueError(f"Expected image shape (C, H, W), not {tuple(image.shape)}")
+        C, H, W = image.shape
+        if H != W:
+            raise ValueError(f"Expected square images, but H != W {tuple(image.shape[1:])}")
+
+        masked_image = image.clone()
+        masked_map = pt.zeros((1, H, W), dtype=pt.float32)
+
+        if not self.apply_mask:
+            return masked_image, masked_map
+
+        mask_size = min(max(1, round(self.mask_ratio * H)), H)
+
+        gen = pt.Generator()
+        gen.manual_seed(self.mask_seed + int(idx))
+
+        max_top = H - mask_size
+        top_A = 0 if max_top == 0 else (
+            pt.randint(
+                0, max_top + 1, (1,), 
+                dtype=pt.int64, 
+                generator=gen).item()
+            )
+        top_B = top_A + mask_size
+
+        max_left = W - mask_size
+        left_A = 0 if max_left == 0 else (
+            pt.randint(
+                0, max_left + 1, (1,), 
+                dtype=pt.int64, 
+                generator=gen).item()
+            )
+        left_B = left_A + mask_size
+
+        masked_image[:, top_A:top_B, left_A:left_B] = 0.0
+        masked_map[:, top_A:top_B, left_A:left_B] = 1.0
+
+        return masked_image, masked_map
+
+    # ==================================================
+    # CONTRIBUTION END: Random Masking Helpers
+    # ==================================================
 
     def _get_file(self):
         if self.file is None:
@@ -324,7 +438,7 @@ class PrepareDataset(pt.utils.data.Dataset):
 
         if self.transform is not None:
             image = self.transform(image)
-        
+
         specz = pt.tensor(float(f[self.SPECZ_KEY][idx]), dtype=pt.float32)
         if self.transform is not None:
             specz = self.transform.normalize_specz(specz)
@@ -332,8 +446,16 @@ class PrepareDataset(pt.utils.data.Dataset):
         raw = f[self.ID_KEY][idx]
         original_id = raw.decode('utf-8') if isinstance(raw, bytes) else str(raw)
 
-        return image, specz, original_id
-    
+        masked_image, masked_map = self._apply_square_mask(image, idx)
+        return (
+            masked_image,   # 2d masked image (encoder input) 
+            image,          # 2d raw image (decoder target)
+            masked_map,     # 2d binary map, where masked pixels = 1.0
+            specz,          # 0d redshift (downstream target)
+            original_id     # unique id from raw dataset, just in case we need it later
+        )
+
+
     def __del__(self):
         if self.file is not None:
             try:
@@ -384,10 +506,18 @@ def main(args):
     transform.fit(train_raw)
 
     # Build datasets with normalization applied
-    train_dataset = PrepareDataset(train_path, transform=transform)
-    valid_dataset = PrepareDataset(valid_path, transform=transform)
-    test_dataset  = PrepareDataset(test_path,  transform=transform)
-
+    train_dataset = PrepareDataset(train_path, transform=transform, 
+                                    mask_ratio=args.mask_ratio, 
+                                    mask_seed=args.mask_seed)
+    
+    valid_dataset = PrepareDataset(valid_path, transform=transform,
+                                    mask_ratio=args.mask_ratio, 
+                                    mask_seed=args.mask_seed)
+    
+    test_dataset  = PrepareDataset(test_path, transform=transform,
+                                    mask_ratio=args.mask_ratio, 
+                                    mask_seed=args.mask_seed)
+    
     # Create DataLoaders, validate output format, then save everything
     output_folder = Path(args.output_folder) / dataset_dir.name
     prepared = PrepareDatasets(
@@ -419,8 +549,25 @@ if __name__ == "__main__":
 """
 python src/preprocess_data.py \
 --input-folder data/galaxiesml_tiny \
---output-folder data/preprocessed \
+--output-folder data/preprocessed/batch_size_16 \
+--num-cores 2 \
+--batch-size 16 \
+--mask-ratio 0.25 \
+--debug
+
+python src/preprocess_data.py \
+--input-folder data/galaxiesml_tiny \
+--output-folder data/preprocessed/batch_size_32 \
 --num-cores 2 \
 --batch-size 32 \
+--mask-ratio 0.25 \
+--debug
+
+python src/preprocess_data.py \
+--input-folder data/galaxiesml_tiny \
+--output-folder data/preprocessed/batch_size_64 \
+--num-cores 2 \
+--batch-size 64 \
+--mask-ratio 0.25 \
 --debug
 """

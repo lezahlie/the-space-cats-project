@@ -56,6 +56,8 @@ class HyperparameterSearch:
     def __init__(
         self, 
         config, 
+        input_folder,
+        output_folder,
         device = "cuda" if pt.cuda.is_available() else "cpu"
     ):
         """Tunes the model with an either an exhaustive grid search AND/OR use the optuna framework to speed things up.
@@ -68,22 +70,19 @@ class HyperparameterSearch:
         """
         self.device = device
         self.config = config
+        self.input_folder = Path(input_folder)
+        self.output_folder = Path(output_folder)
 
-    def load_dataset(self, dataset):
-        """load the datasets from preprocessed files and batch them
-
+    def get_dataloaders(self, batch_size):
+        """load the pre-batched dataloaders from preprocessed files
         Args:
             dataset_path (_type_): _description_
         """
-
-        return DataLoader(dataset, 
-            batch_size=self.batch_size, 
-            shuffle=False, 
-            persistent_workers=True, 
-            num_workers=self.num_cores, 
-            worker_init_fn=self._worker_init_fn,
-            collate_fn=self._collate_dict)
-    
+        self.dataloaders_dir = self.input_folder / f"batch_size_{self.batch_size}"
+        self.train_loader = pt.load(self.dataloaders_dir / "train_dataloader.pth")
+        self.valid_loader = pt.load(self.dataloaders_dir / "valid_dataloader.pth")
+        self.test_loader = pt.load(self.dataloaders_dir / "test_dataloader.pth")
+        return self.train_loader, self.valid_loader, self.test_loader
 
     def run_search(self):
         """placeholder function for hyperparameter searching
@@ -93,8 +92,11 @@ class HyperparameterSearch:
             _type_: _description_
         """
         return NotImplemented
-
+    
     def train(self, model, train_loader):
+        if not model.training:
+            model.training()
+        
         return NotImplemented
         
     @pt.no_grad()
@@ -103,7 +105,7 @@ class HyperparameterSearch:
         if model.training:
             model.eval()
 
-        raise NotImplementedError
+        raise NotImplemented
 
     def save_model(self):
         """placeholder function for saving model weights
@@ -139,10 +141,9 @@ def main(args):
         "ssim_loss_weight": 0.0,
 
         "num_epochs": 500,
-        "batch_size": 32,
-        
-        "learn_rate": 1e-4,
-        "weight_decay": 0.0,
+        "batch_size": [16, 32, 64],
+        "learn_rate": [1e-5, 5e-5, 1e-4, 5e-4],
+        "weight_decay": [0.0, 1e-5, 1e-4],
         "optim_beta1": 0.9,
         "optim_beta2": 0.99,
 
