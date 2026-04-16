@@ -155,6 +155,18 @@ class ModelTrainer:
                 )
             )
 
+        total_params = sum(p.numel() for p in self.mae_model.encoder.parameters())
+        trainable_params = sum(p.numel() for p in self.mae_model.encoder.parameters() if p.requires_grad)
+        self.logger.info(f"CNNEncoder: total_params = {total_params}, trainable_params = {trainable_params}")
+
+        total_params = sum(p.numel() for p in self.mae_model.decoder.parameters())
+        trainable_params = sum(p.numel() for p in self.mae_model.decoder.parameters() if p.requires_grad)
+        self.logger.info(f"CNNDecoder: total_params = {total_params}, trainable_params = {trainable_params}")
+
+        total_params = sum(p.numel() for p in self.mae_model.parameters())
+        trainable_params = sum(p.numel() for p in self.mae_model.parameters() if p.requires_grad)
+        self.logger.info(f"MaskedAutoEncoder: total_params = {total_params}, trainable_params = {trainable_params}")
+
     def setup_optimizer(self, model):
         if self.config["optim_type"] == "adam":
             self.optimizer = pt.optim.Adam(
@@ -338,6 +350,7 @@ class ModelTrainer:
                 y_recon = model.decode(z_latent)
                 validate_tensor("y_recon", y_recon)
 
+
                 loss, smooth_l1, ssim_loss = self.criterion(
                     recon_image=y_recon,
                     target_image=y_target,
@@ -463,7 +476,6 @@ class ModelTrainer:
             valid_loss = valid_metrics["objective_loss"]
             self.scheduler_step(valid_loss)
             has_improved = self.check_improvement(valid_loss, epoch)
-
 
             current_lr = self.optimizer.param_groups[0]["lr"]
             self.logger.debug(

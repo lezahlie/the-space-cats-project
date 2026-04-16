@@ -1,8 +1,8 @@
 from src.utils.common import pt, AttrDict
 NN = pt.nn
 F = NN.functional
-from models.CNNEncoder import CNNEncoder
-from models.CNNDecoder import CNNDecoder
+from src.models.CNNEncoder import CNNEncoder
+from src.models.CNNDecoder import CNNDecoder
 
 
 class MaskedAutoencoder(NN.Module):
@@ -35,12 +35,12 @@ class MaskedAutoencoder(NN.Module):
             raise ValueError(f"Missing entry for batch_size in config")
         elif batch_size < 4:
             raise ValueError(f"batch_size must be at least 4, not {batch_size}")
-            
-
+        
         self.hidden_factor = config.get('hidden_factor', 2.0)
         self.hidden_layers = config.get('hidden_layers', 3)
         self.hidden_dims = config.get('hidden_dims', 512)
         self.latent_dims = config.get('latent_dims', 256)
+        self.expand_channels = config.get('expand_channels', True)
 
         assert self.hidden_factor > 1.0, f"hidden_factor must be > 1.0, not '{self.hidden_factor}'"
         assert self.hidden_layers > 0, f"hidden_layers must be at least 1, not '{self.hidden_layers}'"
@@ -168,33 +168,41 @@ def test_main(args):
     batch_input_shape = (batch_size, input_channels, input_size, input_size)
     expected_encoder_shape = (batch_size, latent_dims)
 
-    model = MaskedAutoencoder(
-        
-    )
+    config = AttrDict(DEFAULT_TRAIN_CONFIG)
+    config.input_shape = batch_input_shape[1:]
+    model = MaskedAutoencoder(config)
 
+    dummy_input_batch = pt.randn(batch_input_shape, device=device)
 
-
-    dummy_input_batch = pt.randn(batch_input_shape)
     logger.debug(f"Batch Input shape: {dummy_input_batch.shape}")
+    logger.debug(f"[CNNEncoder]:\nEncoder Input Layer: {model.encoder.input_layer}"
+                f"\nEncoder Hidden Layers: {model.encoder.encoder_layers}"
+                f"\nEncoder Output Layer: {model.encoder.output_layer}")
 
-    logger.debug(f"Encoder Input Layer:\n{model.input_layer}")
-    logger.debug(f"Encoder Hidden Layers:\n{model.encoder_layers}")
-    logger.debug(f"Encoder Output Layer:\n{model.output_layer}")
-
-
-    encoder_output = model(dummy_input_batch)
+    encoder_output = model.encode(dummy_input_batch)
     if encoder_output == NotImplemented:
         logger.debug("CNNEncoder not implemented yet")
         return
-
     logger.debug(f"Encoder output shape: {encoder_output.shape}, expected_shape: {expected_encoder_shape}")
+
+    logger.debug(f"Latent input shape: {encoder_output.shape}")
+    logger.debug(f"[CNNDecoder]:\nDecoder Input Layer: {model.decoder.input_layer}"
+                f"\nDecoder Hidden Layers: {model.decoder.decoder_layers}"
+                f"\nDecoder Output Layer: {model.decoder.output_layer}")
+
+    decoder_output = model.decode(encoder_output)
+    if decoder_output == NotImplemented:
+        logger.debug("CNNDecoder not implemented yet")
+        return
+    
+    logger.debug(f"Decoder output shape: {decoder_output.shape}, expected_shape: {batch_input_shape}")
 
 
 if __name__ == "__main__":
     from src.utils.logger import init_shared_logger
-    from src.utils.common import pt, SimpleNamespace
+    from src.utils.common import pt, AttrDict
     init_shared_logger(__file__, log_stdout=True, log_stderr=True)
-    fake_args = SimpleNamespace(
+    fake_args = AttrDict(
         num_cores = 1,
         cpu_device_only = False,
         gpu_device_list = [0],

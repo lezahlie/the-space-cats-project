@@ -15,7 +15,8 @@ class CNNDecoder(NN.Module):
         latent_dims: int=128, 
         activation_function: str = "relu",
         negative_slope: float = 0.01,
-        norm_layer: str = "none"
+        norm_layer: str = "none",
+        expand_channels: bool = False
     ): 
         super(CNNDecoder, self).__init__()
         
@@ -33,6 +34,7 @@ class CNNDecoder(NN.Module):
         self.activation_function = activation_function
         self.negative_slope = negative_slope
         self.norm_layer = norm_layer
+        self.expand_channels = expand_channels
 
         # initialize kernel settings
         if conv_kernel % 2 == 0 or conv_kernel < 3:
@@ -44,42 +46,58 @@ class CNNDecoder(NN.Module):
 
         if self.conv_kernel % 2 == 0 or self.conv_kernel < 3:
             raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{self.conv_kernel}'")
-
         # mirror encoder: hidden dims go small → large
         # encoder: [128, 64, 32], decoder: [32, 64, 128]
         self.hidden_per_layer = [
             int(self.hidden_dims / (self.hidden_factor ** i)) 
             for i in range(self.hidden_layers)
-        ][::-1]  # reverse to mirror encoder
+        ]
+        if not self.expand_channels:
+            self.hidden_per_layer = self.hidden_per_layer[::-1]
 
         # compute the spatial size at the bottleneck
         # (same formula as encoder, applied hidden_layers times)
         compute_output_size = lambda x: ((x - self.conv_kernel + 2 * self.conv_padding) // self.conv_stride) + 1
+
         bottleneck_size = self.input_size
+        self.encoder_sizes = [self.input_size]
         for _ in range(self.hidden_layers):
             bottleneck_size = compute_output_size(bottleneck_size)
+            self.encoder_sizes.append(bottleneck_size)
+    
+        self.reduced_channels = max(self.hidden_per_layer[0] // 2, 4)
         self.bottleneck_size = bottleneck_size
         self.bottleneck_HxW = bottleneck_size ** 2
-
         # input layer: Linear → Unflatten
         # latent z (batch, latent_dims) → (batch, C, H, W) at bottleneck
         self.input_layer = NN.Sequential(
             NN.Linear(
                 in_features=self.latent_dims,
-                out_features=self.hidden_per_layer[0] * self.bottleneck_HxW,
+                out_features=self.reduced_channels * self.bottleneck_HxW,
             ),
             NN.Unflatten(
                 dim=1, 
-                unflattened_size=(self.hidden_per_layer[0], self.bottleneck_size, self.bottleneck_size)
+                unflattened_size=(self.reduced_channels, self.bottleneck_size, self.bottleneck_size)
+            ),
+            self._get_activation(),
+            NN.Conv2d(
+                in_channels=self.reduced_channels,
+                out_channels=self.hidden_per_layer[0],
+                kernel_size=1,
+                stride=1,
+                padding=0,
             ),
             self._get_activation(),
         )
-
         # hidden layers: ConvTranspose2d × (hidden_layers - 1)
+        current_size = self.bottleneck_size
         self.decoder_layers = NN.ModuleList()
         for i in range(1, self.hidden_layers):
             in_chan = self.hidden_per_layer[i - 1]
             out_chan = self.hidden_per_layer[i]
+
+            target_size = self.encoder_sizes[-(i+1)]
+            output_padding = self._get_output_padding(current_size, target_size)
             self.decoder_layers.append(
                 NN.Sequential(
                     NN.ConvTranspose2d(
@@ -88,12 +106,15 @@ class CNNDecoder(NN.Module):
                         kernel_size=self.conv_kernel,
                         stride=self.conv_stride,
                         padding=self.conv_padding,
+                        output_padding=output_padding
                     ),
                     self._get_norm_layer(out_chan),
                     self._get_activation(),
                 )
             )
+            current_size = target_size
 
+        final_output_padding = self._get_output_padding(current_size, self.input_size)
         # output layer: project back to original image channels
         # no activation after — let loss function decide (e.g. sigmoid outside)
         self.output_layer = NN.Sequential(
@@ -103,6 +124,7 @@ class CNNDecoder(NN.Module):
                 kernel_size=self.conv_kernel,
                 stride=self.conv_stride,
                 padding=self.conv_padding,
+                output_padding=final_output_padding,
             ),
         )
 
@@ -111,6 +133,23 @@ class CNNDecoder(NN.Module):
         # ==================================================
         # CONTRIBUTION END: Decoder Initialization Part 2
         # ==================================================
+
+
+    
+    def _get_output_padding(self, in_size: int, target_size: int) -> int:
+        output_padding = target_size - (
+            (in_size - 1) * self.conv_stride
+            - 2 * self.conv_padding
+            + self.conv_kernel
+        )
+        if not (0 <= output_padding < self.conv_stride):
+            raise ValueError(
+                f"Invalid output_padding={output_padding} for "
+                f"in_size={in_size}, target_size={target_size}, "
+                f"kernel={self.conv_kernel}, stride={self.conv_stride}, "
+                f"padding={self.conv_padding}"
+            )
+        return output_padding
 
     def _get_activation(self):
         if self.activation_function == "relu":
@@ -125,8 +164,6 @@ class CNNDecoder(NN.Module):
     def _get_norm_layer(self, out_chan):
         if self.norm_layer == "batch":
             return NN.BatchNorm2d(out_chan)
-        elif self.norm_layer == "layer":
-            return NN.LayerNorm(out_chan)
         elif self.norm_layer == "group":
             num_groups = min(8, out_chan)
             while out_chan % num_groups != 0:
@@ -150,6 +187,7 @@ class CNNDecoder(NN.Module):
             NN.init.xavier_normal_(module.weight)
         if module.bias is not None:
             NN.init.zeros_(module.bias)
+
     def forward(self, y):
         # ==================================================
         # CONTRIBUTION START: Decoder Forward Pass
@@ -193,21 +231,22 @@ def test_main(args):
     model = CNNDecoder(
         input_channels, 
         input_size, 
-        conv_kernel=5,
-        conv_stride=1,
+        conv_kernel=3,
+        conv_stride=2,
         hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
         activation_function="relu",
         negative_slope= 0.01,
-        norm_layer="group"
+        norm_layer="group",
+        expand_channels=True
     )
 
     logger.debug(f"Latent input shape: {dummy_latent.shape}")
-    logger.debug(f"Decoder Input Layer:\n{model.input_layer}")
-    logger.debug(f"Decoder Hidden Layers:\n{model.decoder_layers}")
-    logger.debug(f"Decoder Output Layer:\n{model.output_layer}")
+    logger.debug(f"[CNNDecoder]:\nDecoder Input Layer: {model.decoder.input_layer}"
+                f"\nDecoder Hidden Layers: {model.decoder.decoder_layers}"
+                f"\nDecoder Output Layer: {model.decoder.output_layer}")
 
     decoder_output = model(dummy_latent)
     logger.debug(f"Decoder output shape: {decoder_output.shape}, expected_shape: {expected_output_shape}")

@@ -180,15 +180,7 @@ def plot_image_samples(
     band_names=("g", "r", "i", "z", "y"),
     cmap_name="inferno",
 ):
-    num_samples = min(
-        max_samples,
-        len(original_id),
-        len(masked_inputs),
-        len(masks),
-        len(targets),
-        len(reconstructions),
-        len(redshifts) if redshifts is not None else max_samples,
-    )
+    num_samples = len(original_id)
 
     if num_samples < 1:
         raise ValueError("No samples available to plot")
@@ -199,8 +191,8 @@ def plot_image_samples(
     saved_paths = []
     stem = save_path.stem
     suffix = save_path.suffix if save_path.suffix else ".png"
-
-    for sample_idx in range(num_samples):
+    sample_indices = np.random.choice(num_samples, size=max_samples, replace=False)
+    for sample_idx in sample_indices:
         sample_save_path = save_path.parent / f"{stem}_sample_{sample_idx + 1}{suffix}"
 
         sample_original_id = original_id[sample_idx]

@@ -9,14 +9,15 @@ class CNNEncoder(NN.Module):
         input_channels: int,
         input_size: int,
         conv_kernel: int=3,
-        conv_stride: int=1,
+        conv_stride: int=2,
         hidden_layers: int=3, 
         hidden_dims: int=256, 
         hidden_factor: float=2.0,
         latent_dims: int=128, 
         activation_function: str = "relu",
         negative_slope: float = 0.01,
-        norm_layer: str = "none"
+        norm_layer: str = "none",
+        expand_channels: bool = False
     ): 
         super(CNNEncoder, self).__init__()
 
@@ -35,6 +36,7 @@ class CNNEncoder(NN.Module):
         self.hidden_dims = hidden_dims
         self.latent_dims = latent_dims
         self.hidden_factor = hidden_factor
+        self.expand_channels = expand_channels
 
         # initialize other network settings
         self.norm_layer = norm_layer
@@ -49,13 +51,16 @@ class CNNEncoder(NN.Module):
         self.conv_stride = conv_stride
         # symmetric padding that works with stride >= 1 and odd kernels only
         self.conv_padding = self.conv_kernel  // 2
-
         # compute hidden layer dims and validate
         self.hidden_per_layer = [int(self.hidden_dims / (self.hidden_factor ** i)) for i in range(self.hidden_layers)]
         if self.hidden_per_layer[-1] < 4:
             raise ValueError(f"hidden_factor={self.hidden_factor} is too large to reduce hidden_dims={self.hidden_dims} across hidden_layers={self.hidden_layers}\nComputed hidden dims: {self.hidden_per_layer}")
 
+        if self.expand_channels:
+            self.hidden_per_layer = self.hidden_per_layer[::-1]
+
         compute_output_size = lambda x: ((x - self.conv_kernel + 2 * self.conv_padding) // self.conv_stride) + 1
+
 
         # initialize input layer: Conv2D => GroupNorm/BatchNorm2D/None => Activation
         self.input_layer = NN.Sequential(
@@ -72,7 +77,7 @@ class CNNEncoder(NN.Module):
         # compute output size based on input size
         output_size = compute_output_size(self.input_size)
 
-        # initialize encoder layers: input_layer => encoder_layers
+       # initialize encoder layers: input_layer => encoder_layers
         self.encoder_layers = NN.ModuleList()
         for i in range(1, self.hidden_layers):
             in_chan = self.hidden_per_layer[i - 1]
@@ -96,15 +101,23 @@ class CNNEncoder(NN.Module):
 
         # compute the flattened spatial dims of the hidden output
         self.output_size_HxW = output_size ** 2
-
+        reduced_channels = max(self.hidden_per_layer[-1] // 2, 4)
         # init encoder output layer: project hidden_output => latent_z
         # Flatten all dims except the batches
         # Linear Input Shape: (N, C * H * W) 
         # Linear Output Shape: (N, L), L=self.latent_dims
-        self.output_layer = self.output_layer = NN.Sequential(
+        self.output_layer = NN.Sequential(
+            NN.Conv2d(
+                in_channels=self.hidden_per_layer[-1],
+                out_channels=reduced_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            ),
+            self._get_activation(),
             NN.Flatten(start_dim=1),    
             NN.Linear(                  
-                in_features=self.hidden_per_layer[-1] * self.output_size_HxW,
+                in_features=reduced_channels * self.output_size_HxW,
                 out_features=self.latent_dims,
             )   
         )
@@ -130,6 +143,9 @@ class CNNEncoder(NN.Module):
         else:
             raise ValueError(f"unsupported activation_function '{self.activation_function}'")
         
+        # ==================================================
+        # CONTRIBUTION END: Encoder Activation Initialization
+        # ==================================================
 
     def _get_norm_layer(self, out_chan):
         # ==================================================
@@ -138,8 +154,6 @@ class CNNEncoder(NN.Module):
         # ==================================================
         if self.norm_layer == "batch":
             return NN.BatchNorm2d(out_chan)
-        elif self.norm_layer == "layer":
-            return NN.LayerNorm(out_chan)
         elif self.norm_layer == "group":
             num_groups = min(8, out_chan)
             while out_chan % num_groups != 0:
@@ -215,26 +229,24 @@ def test_main(args):
     model = CNNEncoder(
         input_channels, 
         input_size, 
-        conv_kernel=5,
-        conv_stride=1,
+        conv_kernel=3,
+        conv_stride=2,
         hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
         activation_function="relu",
         negative_slope= 0.01,
-        norm_layer="group"
+        norm_layer="group",
+        expand_channels=True
     )
-
-
 
     dummy_input_batch = pt.randn(batch_input_shape)
     logger.debug(f"Batch Input shape: {dummy_input_batch.shape}")
 
-    logger.debug(f"Encoder Input Layer:\n{model.input_layer}")
-    logger.debug(f"Encoder Hidden Layers:\n{model.encoder_layers}")
-    logger.debug(f"Encoder Output Layer:\n{model.output_layer}")
-
+    logger.debug(f"[CNNEncoder]:\nEncoder Input Layer: {model.input_layer}"
+                    f"\nEncoder Hidden Layers: {model.encoder_layers}"
+                    f"\nEncoder Output Layer: {model.output_layer}")
 
     encoder_output = model(dummy_input_batch)
     if encoder_output == NotImplemented:

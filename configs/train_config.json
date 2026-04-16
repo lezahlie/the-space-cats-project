@@ -2,8 +2,8 @@
     "_description": "base training config with default hyper-parameters",
 
     "num_epochs": 25,
-    "batch_size": 32,
-    "ssim_loss_weight": 0.5,
+    "batch_size": 64,
+    "ssim_loss_weight": 0.0,
 
     "learn_rate": 1e-4,
     "lr_scheduler": "plateau",
@@ -17,15 +17,16 @@
     "optim_type": "adamw",
 
     "hidden_layers": 3,
-    "hidden_dims": 256,
+    "hidden_dims": 128,
     "latent_dims": 128,
-    "conv_kernel": 5,
+    "conv_kernel": 3,
     "conv_stride": 1,
 
     "activation_function": "relu",
     "norm_layer": null,   
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
+    "expand_channels": true,
 
     "enable_earlystop": true,
     "earlystop_patience": 5,

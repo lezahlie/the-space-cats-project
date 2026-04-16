@@ -1,7 +1,7 @@
 """
 Utilities for parsing yaml and/or json configs 
 """
-from utils.common import copy, AttrDict
+from src.utils.common import copy, AttrDict
 
 
 
@@ -27,13 +27,14 @@ DEFAULT_TRAIN_CONFIG = {
     "hidden_layers": 3,
     "hidden_dims": 256,
     "latent_dims": 128,
-    "conv_kernel": 5,
-    "conv_stride": 1,
+    "conv_kernel": 3,
+    "conv_stride": 2,
 
     "activation_function": "relu",
-    "norm_layer": None,   
+    "norm_layer": "none",   
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
+    "expand_channels": True,
 
     "enable_earlystop": True,
     "earlystop_patience": 5,
@@ -140,6 +141,7 @@ def validate_config(config):
     # conv_kernel
     if config["conv_kernel"] <= 0:
         raise ValueError("conv_kernel must be an INT > 0")
+    
     if config["conv_kernel"] % 2 == 0:
         raise ValueError("conv_kernel must be an odd INT")
 
@@ -158,13 +160,14 @@ def validate_config(config):
 
     # norm_layer
     config["norm_layer"] = str(config["norm_layer"]).lower().strip()
-    valid_norm_layers = {"none", "group", "batch", "layer"}
+    valid_norm_layers = {"none", "group", "batch"}
     if config["norm_layer"] not in valid_norm_layers:
         raise ValueError(
             f"norm_layer must be one of {sorted(valid_norm_layers)}, "
             f"got {config['norm_layer']!r}"
         )
-
+    
+    
     # negative_slope
     if config["negative_slope"] < 0:
         raise ValueError("negative_slope must be a FLOAT >= 0")
@@ -172,7 +175,11 @@ def validate_config(config):
     # hidden_factor
     if config["hidden_factor"] <= 0:
         raise ValueError("hidden_factor must be a FLOAT > 0")
-
+    
+    # expand_channels
+    if not isinstance(config["expand_channels"], bool):
+        raise ValueError("expand_channels ust be a BOOL")
+    
     # enable_earlystop
     if not isinstance(config["enable_earlystop"], bool):
         raise TypeError("enable_earlystop must be a BOOL")

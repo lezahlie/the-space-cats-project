@@ -26,6 +26,7 @@
     "conv_stride": 1,
     "hidden_factor": 2.0,
     "negative_slope": 0.01,
+    "expand_channels": true,
 
     "enable_earlystop": true,
     "earlystop_patience": 5,
