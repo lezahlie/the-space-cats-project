@@ -86,7 +86,7 @@ class ModelTrainer:
         self.prepare_datasets = PrepareDatasets.load(
             prep_datasets_path,
             batch_size=self.config["batch_size"],
-            num_workers=self.config["num_workers"],
+            num_workers=min(1, self.config["num_workers"]-1),
             random_seed=self.config["random_seed"],
         )
 
@@ -147,14 +147,13 @@ class ModelTrainer:
         self._should_plot_last_batch = lambda epoch=None: (
             self.config["plot_last_batch_frequency"] > 0
             and self.config["plot_last_batch_limit"] > 0
-            and (
-                epoch is None
-                or (
-                    isinstance(epoch, int)
-                    and epoch % self.config["plot_last_batch_frequency"] == 0
+            and (epoch is None or (isinstance(epoch, int)
+                    and (epoch == 0
+                        or epoch == self.config["num_epochs"]
+                        or epoch % self.config["plot_last_batch_frequency"] == 0)
+                    )
                 )
             )
-        )
 
     def setup_optimizer(self, model):
         if self.config["optim_type"] == "adam":
@@ -363,10 +362,9 @@ class ModelTrainer:
                         f"avg_loss={avg_loss:.6f}"
                     )
 
-        if self._should_plot_last_batch(epoch):
+        if self.config["debug"] and self._should_plot_last_batch(epoch):
             batch_samples = self._copy_batch_samples(batch=batch, y_recon=y_recon, z_latent=z_latent)
             self.save_sample_plots(batch_samples, "training", epoch=epoch)
-
 
         metrics = {
             "objective_loss": total_loss / total_batches,
@@ -464,7 +462,7 @@ class ModelTrainer:
 
             valid_loss = valid_metrics["objective_loss"]
             self.scheduler_step(valid_loss)
-            improved = self.check_improvement(valid_loss, epoch)
+            has_improved = self.check_improvement(valid_loss, epoch)
 
 
             current_lr = self.optimizer.param_groups[0]["lr"]
@@ -483,10 +481,10 @@ class ModelTrainer:
                 "learning_rate": current_lr,
                 "train": train_metrics,
                 "validation": valid_metrics,
-                "improved": improved,
+                "improved": has_improved,
             })
 
-            if improved:
+            if has_improved:
                 self.save_checkpoint(
                     file_name="best_model.pth",
                     model_state_dict=self.best_model_state,
@@ -548,6 +546,7 @@ def main(args):
 
     train_config = read_from_json(args.config_file)
     train_config.update({
+        "debug": args.debug,
         "num_workers": args.num_cores,
         "random_seed": args.random_seed,
     })

@@ -1,13 +1,13 @@
 {
     "_description": "base training config with default hyper-parameters",
 
-    "num_epochs": 50,
+    "num_epochs": 2,
     "batch_size": 32,
     "ssim_loss_weight": 0.5,
 
     "learn_rate": 1e-4,
     "lr_scheduler": "plateau",
-    "lr_scheduler_patience": 5,
+    "lr_scheduler_patience": 3,
     "lr_scheduler_factor": 0.2,
     "lr_scheduler_min_lr": 1e-6,
 
@@ -33,7 +33,7 @@
 
     "log_epoch_frequency": 1,
     "log_batch_frequency": 10,
-    "plot_last_batch_frequency": 5,
-    "plot_last_batch_limit": 5
+    "plot_last_batch_frequency": 1,
+    "plot_last_batch_limit": 3
 }
 

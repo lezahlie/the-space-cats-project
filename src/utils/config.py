@@ -9,12 +9,15 @@ DEFAULT_TRAIN_CONFIG = {
     "mask_ratio": 0.0,
     "num_epochs": 200,
     "batch_size": 64,
+    "num_epochs": 2,
+    "batch_size": 32,
     "ssim_loss_weight": 0.5,
-    "learn_rate": 1e-5,
+
+    "learn_rate": 1e-4,
     "lr_scheduler": "plateau",
-    "lr_scheduler_min_lr": 1e-5,
     "lr_scheduler_patience": 3,
     "lr_scheduler_factor": 0.2,
+    "lr_scheduler_min_lr": 1e-6,
 
     "weight_decay": 0.0,
     "optim_beta1": 0.9,
@@ -32,14 +35,14 @@ DEFAULT_TRAIN_CONFIG = {
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
 
-    "enable_earlystop": False,
+    "enable_earlystop": True,
     "earlystop_patience": 5,
     "earlystop_min_delta": 1e-4,
 
     "log_epoch_frequency": 1,
     "log_batch_frequency": 10,
-    "plot_last_batch_frequency": 5,
-    "plot_last_batch_limit": 5
+    "plot_last_batch_frequency": 1,
+    "plot_last_batch_limit": 3
 }
 
 
