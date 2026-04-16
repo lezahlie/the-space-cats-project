@@ -1,11 +1,12 @@
-from src.utils.common import pt
+from src.utils.common import pt, AttrDict
 NN = pt.nn
 F = NN.functional
 from models.CNNEncoder import CNNEncoder
 from models.CNNDecoder import CNNDecoder
 
+
 class MaskedAutoencoder(NN.Module):
-    def __init__(self, model_params: dict):
+    def __init__(self, config: AttrDict):
         super(MaskedAutoencoder, self).__init__()
 
         # ==================================================
@@ -13,14 +14,15 @@ class MaskedAutoencoder(NN.Module):
         # Contributor: Leslie Horace
         # ==================================================
 
-        self.device = model_params.get('device', "cuda" if pt.cuda.is_available() else "cuda")
-        self.random_seed = model_params.get('random_seed', 42)
+        self.device = config.get('device', "cuda" if pt.cuda.is_available() else "cuda")
+        self.random_seed = config.get('random_seed', 42)
+ 
 
         initial_seed = pt.initial_seed()
         if initial_seed != self.random_seed:
             raise RuntimeError(f"torch.initial_seed() returned {initial_seed}, but expected {self.random_seed}. Call SetupDevice.setup_torch_device(..., random_seed={self.random_seed}) first.")
         
-        self.input_shape = model_params.get('input_shape', None)
+        self.input_shape = config.get('input_shape', None)
         assert isinstance(self.input_shape, (tuple, list)) and len(self.input_shape) == 3, ("input_shape must be a tuple or list with format (C, H, W), where C=channels, H=height, and W=width")
         C, H, W = self.input_shape
         assert C > 0 and H > 3 and W == H, "input_shape must meet constraints: (C > 0, H > 3, W == H)"
@@ -28,33 +30,35 @@ class MaskedAutoencoder(NN.Module):
         self.input_channels = C
         self.input_size = H
 
-        self.hidden_factor = model_params.get('hidden_factor', 2.0)
-        self.hidden_layers = model_params.get('hidden_layers', 3)
-        self.hidden_dims = model_params.get('hidden_dims', 256)
-        self.latent_dims = model_params.get('latent_dims', 128)
+        batch_size = config.get('batch_size', None)
+        if not isinstance(batch_size, int):
+            raise ValueError(f"Missing entry for batch_size in config")
+        elif batch_size < 4:
+            raise ValueError(f"batch_size must be at least 4, not {batch_size}")
+            
+
+        self.hidden_factor = config.get('hidden_factor', 2.0)
+        self.hidden_layers = config.get('hidden_layers', 3)
+        self.hidden_dims = config.get('hidden_dims', 512)
+        self.latent_dims = config.get('latent_dims', 256)
 
         assert self.hidden_factor > 1.0, f"hidden_factor must be > 1.0, not '{self.hidden_factor}'"
         assert self.hidden_layers > 0, f"hidden_layers must be at least 1, not '{self.hidden_layers}'"
         assert self.hidden_dims > 3, f"hidden_dims must be at least 4, not '{self.hidden_dims}'"
         assert self.latent_dims > 3, f"latent_dims must be at least 4, not '{self.latent_dims}'"
-
-        self.activation_name = model_params.get("activation_function", "relu")
+        
+        self.activation_function = config.get("activation_function", "relu")
         # negative slope for leaky relu activation and weight initialization 
-        self.negative_slope = model_params.get("negative_slope", 0.01)
-        self.apply_batchnorm = model_params.get("apply_batchnorm", 0.01)
-        self.apply_groupnorm = model_params.get("apply_groupnorm", 0.01)
-        self.conv_kernel = model_params.get("conv_kernel", 3)
-        self.conv_stride = model_params.get("conv_stride", 1)
+        self.negative_slope = config.get("negative_slope", 0.01)
+        self.norm_layer = config.get("norm_layer", "none")
+        self.conv_kernel = config.get("conv_kernel", 3)
+        self.conv_stride = config.get("conv_stride", 1)
 
-        assert self.activation_name in {"relu", "tanh", "leaky"}, "activation_function must be one of: 'relu', 'tanh', 'leaky'"
-        assert not (self.apply_batchnorm and self.apply_groupnorm), "apply_batchnorm and apply_groupnorm cannot both be True"
-        assert self.conv_kernel % 2 == 1 and self.conv_kernel > 2, f"self.conv_kernel must be odd and at least 3, not '{self.conv_kernel}'"
+        assert self.norm_layer in {"none", "batch", "group"}, "norm_layer must be one of: 'none', 'batch', 'group'"
+        assert self.activation_function in {"relu", "tanh", "leaky"}, "activation_function must be one of: 'relu', 'tanh', 'leaky'"
+        assert self.conv_kernel % 2 == 1 and self.conv_kernel > 2, f"conv_kernel must be odd and at least 3 for symmetric padding, not '{self.conv_kernel}'"
         assert self.conv_stride > 0, f"self.conv_stride must be at least 1, not '{self.conv_stride}'"
-
-        # @todo need to implement this later
-        self.mask_ratio = model_params.get('mask_ratio', 0.0)
-        assert 0.0 <= self.mask_ratio <= 1.0, f"mask_ratio must be in range [0.0, 1.0], not '{self.mask_ratio}'"
-
+        
         self.encoder = CNNEncoder(
             self.input_channels,
             self.input_size,
@@ -62,10 +66,9 @@ class MaskedAutoencoder(NN.Module):
             hidden_dims= self.hidden_dims,
             hidden_factor= self.hidden_factor,
             latent_dims= self.latent_dims,
-            activation_name = self.activation_name,
+            activation_function = self.activation_function,
             negative_slope = self.negative_slope,
-            apply_batchnorm = self.apply_batchnorm,
-            apply_groupnorm = self.apply_groupnorm,
+            norm_layer = self.norm_layer,
             conv_kernel=self.conv_kernel,
             conv_stride=self.conv_stride
         )
@@ -76,19 +79,33 @@ class MaskedAutoencoder(NN.Module):
         # CONTRIBUTION END: Encoder Initialization Part 1
         # ==================================================
 
-
         # ==================================================
         # CONTRIBUTION START: Decoder Initialization Part 1
-        # Contributor: <First> <Last>
+        # Contributor: Leslie Horace
         # ==================================================
 
+        self.decoder = CNNDecoder(
+            self.input_channels,
+            self.input_size,
+            hidden_layers = self.hidden_layers,
+            hidden_dims= self.hidden_dims,
+            hidden_factor= self.hidden_factor,
+            latent_dims= self.latent_dims,
+            activation_function = self.activation_function,
+            negative_slope = self.negative_slope,
+            norm_layer = self.norm_layer,
+            conv_kernel=self.conv_kernel,
+            conv_stride=self.conv_stride
+        )
+
+        self.decoder.to(device=self.device)
         # ==================================================
         # CONTRIBUTION END: Decoder Initialization Part 1
         # ==================================================
 
         self.to(self.device)
 
-    def encode(self, x):
+    def encode(self, x: pt.Tensor):
         """encodes (compresses) an input x to latent z
 
         Args: 
@@ -97,7 +114,6 @@ class MaskedAutoencoder(NN.Module):
         Returns:
             tensor: latent z
         """
-        z = None
         # ==================================================
         # CONTRIBUTION START: Encoder Reconstruction 
         # Contributor: Wen Yu
@@ -109,23 +125,81 @@ class MaskedAutoencoder(NN.Module):
         # ==================================================
     
 
-
-    def decode(self, y):
+    def decode(self, z: pt.Tensor):
         """decodes (reconstructs) a latent z to output y
         Args: 
-            y (tensor): output image 
+            z (tensor): output image 
     
         Returns:
-            tensor: reconstructed x
+            tensor: reconstructed y
         """
-        x = None
         # ==================================================
         # CONTRIBUTION START: Decoder Reconstruction
-        # Contributor: <First> <Last>
+        # Contributor: Leslie Horace
         # ==================================================
-
-    
+        y = self.decoder(z)
+        return y
         # ==================================================
         # CONTRIBUTION END: Decoder Reconstruction
         # ==================================================
-        return NotImplemented
+
+
+
+def test_main(args):
+    from src.utils.device import SetupDevice
+    from src.utils.logger import set_logger_level, get_logger
+    from src.utils.config import DEFAULT_TRAIN_CONFIG
+    set_logger_level(10)
+    logger = get_logger()
+
+    device = SetupDevice.setup_torch_device(
+        args.num_cores,
+        args.cpu_device_only,
+        args.gpu_device_list,
+        args.gpu_memory_fraction,
+        args.random_seed
+    )
+
+    batch_size = 20
+    input_channels = 5
+    input_size = 64
+    latent_dims = 128
+
+    batch_input_shape = (batch_size, input_channels, input_size, input_size)
+    expected_encoder_shape = (batch_size, latent_dims)
+
+    model = MaskedAutoencoder(
+        
+    )
+
+
+
+    dummy_input_batch = pt.randn(batch_input_shape)
+    logger.debug(f"Batch Input shape: {dummy_input_batch.shape}")
+
+    logger.debug(f"Encoder Input Layer:\n{model.input_layer}")
+    logger.debug(f"Encoder Hidden Layers:\n{model.encoder_layers}")
+    logger.debug(f"Encoder Output Layer:\n{model.output_layer}")
+
+
+    encoder_output = model(dummy_input_batch)
+    if encoder_output == NotImplemented:
+        logger.debug("CNNEncoder not implemented yet")
+        return
+
+    logger.debug(f"Encoder output shape: {encoder_output.shape}, expected_shape: {expected_encoder_shape}")
+
+
+if __name__ == "__main__":
+    from src.utils.logger import init_shared_logger
+    from src.utils.common import pt, SimpleNamespace
+    init_shared_logger(__file__, log_stdout=True, log_stderr=True)
+    fake_args = SimpleNamespace(
+        num_cores = 1,
+        cpu_device_only = False,
+        gpu_device_list = [0],
+        gpu_memory_fraction = 0.5,
+        random_seed = 42
+    )
+
+    test_main(fake_args)

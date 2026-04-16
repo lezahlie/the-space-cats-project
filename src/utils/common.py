@@ -19,16 +19,19 @@ import pandas as pd
 import warnings
 import traceback
 import gc
+import copy 
+import time
 from pathlib import Path
-from typing import Any, Literal, List, Tuple, Dict, Type, Optional
-from types import SimpleNamespace
+from typing import Any, Literal, List, Tuple, Dict, Type, Optional, Union
+
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # ==================================================
-# CONTRIBUTION START: Lazy loader for GalaxiesMLDataset
+# CONTRIBUTION START: Lazy loader for GalaxiesMLDataset,
+# I/O helpers for json
 # Contributor: Leslie Horace
 # ==================================================
 
@@ -122,7 +125,99 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
                 y = self.target_transform(y)
 
         return x, y
+
+class AttrDict(dict):
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as e:
+            raise AttributeError(key) from e
+
+    def __setattr__(self, key, value):
+        self[key] = self._wrap(value)
+
+    def __delattr__(self, key):
+        try:
+            del self[key]
+        except KeyError as e:
+            raise AttributeError(key) from e
+
+    @classmethod
+    def _wrap(cls, value):
+        if isinstance(value, dict) and not isinstance(value, AttrDict):
+            return cls({k: cls._wrap(v) for k, v in value.items()})
+        if isinstance(value, list):
+            return [cls._wrap(v) for v in value]
+        return value
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        data = dict(*args, **kwargs)
+        for k, v in data.items():
+            self[k] = self._wrap(v)
+
+
+
+def format_json(input_dict):
+    def _convert(v):
+        if isinstance(v, dict):
+            return {k: _convert(val) for k, val in v.items()}
+
+        if isinstance(v, (list, tuple)):
+            return [_convert(x) for x in v]
+
+        if isinstance(v, pt.Tensor):
+            return v.detach().cpu().tolist()
+
+        if isinstance(v, np.ndarray):
+            return v.tolist()
+
+        if isinstance(v, np.generic):
+            return v.item()
+
+        if v is None or isinstance(v, (str, int, float, bool)):
+            return v
+
+        return str(v)
+
+    return _convert(input_dict)
+
+def save_to_json(file_path, content, mode='w', indent=4, sort_keys=False):
+    try:
+        if isinstance(content, dict):
+            content = format_json(content)
+        elif isinstance(content, list):
+            content = [format_json(item) if isinstance(item, dict) else item for item in content]
+        with open(file_path, mode) as json_file:
+            json.dump(content, json_file, indent=indent, sort_keys=sort_keys)
+    except Exception as e:
+        get_logger().error(f"Error saving to JSON file: {file_path}")
+        raise e
+
+def read_from_json(file_path):
+    try:
+        with open(file_path, 'r') as json_file:
+            content = json.load(json_file)
+        return content
+    except Exception as e:
+        get_logger().error(f"Error reading to JSON file: {file_path}")
+        raise e
+
+def tensor_to_image(x):
+    if isinstance(x, pt.Tensor):
+        x = x.detach().cpu().float().numpy()
+    return np.asarray(x)
+
+def validate_tensor(name, x):
+    if x is None:
+        raise ValueError(f"{name} is None")
+    if not pt.is_tensor(x):
+        raise TypeError(f"{name} must be a torch.Tensor, got {type(x).__name__}")
+    if not pt.isfinite(x).all():
+        raise ValueError(f"{name} contains NaN or Inf values")
     
+
 # ==================================================
-# CONTRIBUTION End: Lazy loader for GalaxiesMLDataset
+# CONTRIBUTION End: Lazy loader for GalaxiesMLDataset,
+# json I/O, plotting tools, helpers
 # ==================================================

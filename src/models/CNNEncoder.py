@@ -1,4 +1,4 @@
-from src.utils.common import pt
+from src.utils.common import pt, Optional
 NN = pt.nn
 F = NN.functional
 
@@ -8,16 +8,15 @@ class CNNEncoder(NN.Module):
         self, 
         input_channels: int,
         input_size: int,
+        conv_kernel: int=3,
+        conv_stride: int=1,
         hidden_layers: int=3, 
-        hidden_dims: int=128, 
+        hidden_dims: int=256, 
         hidden_factor: float=2.0,
-        latent_dims: int=64, 
-        activation_name: str = "relu",
+        latent_dims: int=128, 
+        activation_function: str = "relu",
         negative_slope: float = 0.01,
-        apply_batchnorm: bool = False,
-        apply_groupnorm: bool = False,
-        conv_kernel: int = 3,
-        conv_stride: int = 1,
+        norm_layer: str = "none"
     ): 
         super(CNNEncoder, self).__init__()
 
@@ -37,16 +36,19 @@ class CNNEncoder(NN.Module):
         self.latent_dims = latent_dims
         self.hidden_factor = hidden_factor
 
-        self.apply_batchnorm = apply_batchnorm
-        self.apply_groupnorm = apply_groupnorm
-        self.activation_name = activation_name
+        # initialize other network settings
+        self.norm_layer = norm_layer
+        self.activation_function = activation_function
         self.negative_slope = negative_slope
 
         # initialize kernel settings
+        if conv_kernel % 2 == 0 or conv_kernel < 3:
+            raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{conv_kernel}'")
+        
         self.conv_kernel = conv_kernel
         self.conv_stride = conv_stride
-        # padding is the simple equation for square input dims
-        self.conv_padding = (self.conv_kernel - self.conv_stride) // 2
+        # symmetric padding that works with stride >= 1 and odd kernels only
+        self.conv_padding = self.conv_kernel  // 2
 
         # compute hidden layer dims and validate
         self.hidden_per_layer = [int(self.hidden_dims / (self.hidden_factor ** i)) for i in range(self.hidden_layers)]
@@ -96,7 +98,7 @@ class CNNEncoder(NN.Module):
         self.output_size_HxW = output_size ** 2
 
         # init encoder output layer: project hidden_output => latent_z
-        # Flatten all dims except the batch
+        # Flatten all dims except the batches
         # Linear Input Shape: (N, C * H * W) 
         # Linear Output Shape: (N, L), L=self.latent_dims
         self.output_layer = self.output_layer = NN.Sequential(
@@ -119,29 +121,32 @@ class CNNEncoder(NN.Module):
         # Contributor: Leslie Horace
         # ==================================================
         # initialize element wise activation
-        if self.activation_name == "relu":
+        if self.activation_function == "relu":
             return NN.ReLU()
-        elif self.activation_name == "leaky":
+        elif self.activation_function == "leaky":
             return NN.LeakyReLU(negative_slope=self.negative_slope)
-        elif self.activation_name == "tanh":
+        elif self.activation_function == "tanh":
             return NN.Tanh()
         else:
-            raise ValueError(f"unsupported activation_name '{self.activation_name}'")
+            raise ValueError(f"unsupported activation_function '{self.activation_function}'")
         
 
     def _get_norm_layer(self, out_chan):
         # ==================================================
-        # CONTRIBUTION START: Encoder Activation Initialization
+        # CONTRIBUTION START: Encoder Normalization Initialization
         # Contributor: Leslie Horace
         # ==================================================
-        if self.apply_batchnorm:
+        if self.norm_layer == "batch":
             return NN.BatchNorm2d(out_chan)
-        elif self.apply_groupnorm:
+        elif self.norm_layer == "layer":
+            return NN.LayerNorm(out_chan)
+        elif self.norm_layer == "group":
             num_groups = min(8, out_chan)
             while out_chan % num_groups != 0:
                 num_groups -= 1
             return NN.GroupNorm(num_groups, out_chan)
         return NN.Identity()
+    
         # ==================================================
         # CONTRIBUTION END: Norm Layer Initialization Helper
         # ==================================================
@@ -153,11 +158,11 @@ class CNNEncoder(NN.Module):
         # ==================================================
         if not isinstance(module, (NN.Conv2d, NN.ConvTranspose2d, NN.Linear)):
             return
-        if self.activation_name == "relu":
+        if self.activation_function == "relu":
             NN.init.kaiming_normal_(module.weight, nonlinearity="relu")
-        elif self.activation_name == "leaky":
+        elif self.activation_function == "leaky":
             NN.init.kaiming_normal_(module.weight, a=self.negative_slope, nonlinearity="leaky_relu")
-        elif self.activation_name == "tanh":
+        elif self.activation_function == "tanh":
             NN.init.xavier_normal_(module.weight)
         if module.bias is not None:
             NN.init.zeros_(module.bias)
@@ -210,16 +215,15 @@ def test_main(args):
     model = CNNEncoder(
         input_channels, 
         input_size, 
+        conv_kernel=5,
+        conv_stride=1,
         hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
-        activation_name="relu",
+        activation_function="relu",
         negative_slope= 0.01,
-        apply_batchnorm=False,
-        apply_groupnorm=False,
-        conv_kernel=5,
-        conv_stride=1
+        norm_layer="group"
     )
 
 

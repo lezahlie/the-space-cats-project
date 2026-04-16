@@ -150,7 +150,11 @@ tar -xvf path/to/galaxiesml_<size>.tar.gz -C data/
   - `5x64x64_testing_reduced_large.hdf5`: N=5000
   - total: N=50000
 
-
+- `galaxiesml_mega.tar.gz`: Possibly overkill for reconstruction
+  - `5x64x64_training_reduced_mega.hdf5`: N=70000
+  - `5x64x64_validation_reduced_mega.hdf5`: N=20000
+  - `5x64x64_testing_reduced_mega.hdf5`: N=10000
+  - total: N=100000
 
 > Each reduced dataset is packaged as tar gzip archive containing reduced training, validation, and testing HDF5 files.</br>
 >  In addition, each archive includes a metadata text file describing the internal HDF5 structure.</br>

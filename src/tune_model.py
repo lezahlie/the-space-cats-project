@@ -1,7 +1,7 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, Path, pt
+from src.utils.common import argparse, os, Path, pt, read_from_json
 from src.utils.device import SetupDevice
-DataLoader=pt.utils.data.DataLoader
+from train_model import ModelTrainer
 
 def process_args():
     parser = argparse.ArgumentParser(description="Tune Model Executable", formatter_class= argparse.RawTextHelpFormatter)
@@ -52,7 +52,7 @@ def process_args():
     return args
 
 
-class HyperparameterSearch:
+class HyperparameterSearch(ModelTrainer):
     def __init__(
         self, 
         config, 
@@ -60,31 +60,30 @@ class HyperparameterSearch:
         output_folder,
         device = "cuda" if pt.cuda.is_available() else "cpu"
     ):
-        """Tunes the model with an either an exhaustive grid search AND/OR use the optuna framework to speed things up.
+        """Tunes the model with an exhaustive grid search or optuna to speed things up.
 
+        a) if doing exhaustive grid search:
+            we need to figure out spitting up param grids into 4-5 stages to avoid combinatorial explosion
+            then carryover the best settings from each stage into the next
+            ideally these stages can run automatically with some helper functions
+            for instance, to fine tune around lose we can compute the log neighbors around the best values
+                so say the best_lr=3e-4, we can fine tune with this lr_grid=[1e-4, 3e-4, 5e-4]
+
+        b) if using optuna with median/threshold trial pruning, we could have afford 2 stages for a coarse search and a fine search
+            Note: we will need track each trials settings and also prune/skip duplicate runs
             Optuna docs: https://optuna.readthedocs.io/en/stable/
             Optuna example: https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py
 
         Args:
             config (dict): hyper-params for model network, optimizer, loss function, etc
         """
-        self.device = device
-        self.config = config
-        self.input_folder = Path(input_folder)
-        self.output_folder = Path(output_folder)
+        super().__init__(config, input_folder, output_folder, device)
+        self.base_config = dict(config)
+        self.best_stage_config = dict(config)
+        self.best_overall_config = dict(config)
 
-    def get_dataloaders(self, batch_size):
-        """load the pre-batched dataloaders from preprocessed files
-        Args:
-            dataset_path (_type_): _description_
-        """
-        self.dataloaders_dir = self.input_folder / f"batch_size_{self.batch_size}"
-        self.train_loader = pt.load(self.dataloaders_dir / "train_dataloader.pth")
-        self.valid_loader = pt.load(self.dataloaders_dir / "valid_dataloader.pth")
-        self.test_loader = pt.load(self.dataloaders_dir / "test_dataloader.pth")
-        return self.train_loader, self.valid_loader, self.test_loader
 
-    def run_search(self):
+    def run_stage(self, param_grid):
         """placeholder function for hyperparameter searching
         you can delete this and/or add whatever you want.
 
@@ -92,23 +91,70 @@ class HyperparameterSearch:
             _type_: _description_
         """
         return NotImplemented
+
+
+    def make_trainer(self, config):
+        return ModelTrainer(
+            config=config,
+            input_folder=self.input_folder,
+            output_folder=self.output_folder,
+            device=self.device,
+        )
     
-    def train(self, model, train_loader):
-        if not model.training:
-            model.training()
-        
+    def save_best_so_far(self):
+        """placeholder function for saving the 
+            - best so far model state
+            - best so far epoch
+            - best so far valid loss
+
+        Returns:
+            _type_: _description_
+        """
         return NotImplemented
-        
-    @pt.no_grad()
-    def evaluate(self, model, valid_or_test_loader):
-        """run validation"""
-        if model.training:
-            model.eval()
+    
+    def update_best_configs(self, new_best):
+        """placeholder function updating the best config 
+        so after each stage, carry the best settings forward to the next stage
+        also track the best global config, because it's possible for a 
+        stages best valid_loss to be worse than the previous stage.
 
-        raise NotImplemented
+        Returns:
+            _type_: _description_
+        """
+    
+        # self.best_stage_config.update()
+        # self.best_overall_config.update()
+        return NotImplemented
+    
+    def override_best_(self):
+        """placeholder function for saving the 
+            - best so far model state
+            - best so far epoch
+            - best so far loss
 
-    def save_model(self):
+        Returns:
+            _type_: _description_
+        """
+        return NotImplemented
+
+    def load_model_state(self, load_model_path):
         """placeholder function for saving model weights
+
+        Args:
+            load_model_path (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return NotImplemented
+
+
+    def save_model_state(self, save_model_path):
+        """placeholder function for saving model weights
+
+        Args:
+            save_model_path (_type_): _description_
+
         Returns:
             _type_: _description_
         """
@@ -130,41 +176,10 @@ def main(args):
         args.random_seed
     )
     logger.info(f"Using device = {device}")
-    fake_config ={
-        "random_seed": args.random_seed,
-        "device": device,
 
-        "input_shape": None,    # need to derive shape from a single dataset sample, e.g., (5, 64, 64)
-
-        "mask_ratio": 0.0,
-
-        "ssim_loss_weight": 0.0,
-
-        "num_epochs": 500,
-        "batch_size": [16, 32, 64],
-        "learn_rate": [1e-5, 5e-5, 1e-4, 5e-4],
-        "weight_decay": [0.0, 1e-5, 1e-4],
-        "optim_beta1": 0.9,
-        "optim_beta2": 0.99,
-
-        "hidden_factor": 2.0,
-        "hidden_layers": 3,
-        "hidden_dims": 256,
-        "latent_dims": 128,
-
-        "activation_function": "relu",
-        "negative_slope": 0.01,     # for activation_function "leaky"
-        "apply_batchnorm": False,
-        "apply_groupnorm": False,
-        "conv_kernel": 3,
-        "conv_stride": 1,
-
-        "enable_earlystop": True,
-        "earlystop_patience": 20,
-        "earlystop_min_delta": 0.0
-    }
-
-    search = HyperparameterSearch(fake_config, device)
+    base_config = read_from_json(args.config_file, as_dict=True)
+    assert all(isinstance(x, (tuple, list, dict)) for x in  base_config.values())
+    search = HyperparameterSearch(base_config, device)
 
     logger.debug(f"TEST DEBUG LOG (debug enabled? {args.debug})")
     logger.info("TEST INFO LOG")

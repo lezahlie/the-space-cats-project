@@ -1,0 +1,38 @@
+{
+    "_description": "all possible param grids to tune, will need to split them into stages",
+    "mask_ratio": 0.0,
+    "num_epochs": 50,
+    "ssim_loss_weight": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+
+    "learn_rate": [1e-6, 3e-6, 5e-6, 1e-5, 3e-5, 5e-5, 1e-4, 3e-4, 5e-4],
+    "lr_scheduler": [null, "plateau", "cosine"],
+    "lr_scheduler_min_lr": [1e-7, 5e-7, 1e-6, 5e-6, 1e-5, 5e-5],
+    "lr_scheduler_patience": [5, 10, 15, 20],
+    "lr_scheduler_factor": [0.1, 0.2, 0.3, 0.4, 0.5],
+
+    "batch_size": [16, 32, 48, 64, 96, 128],
+    "weight_decay": [0.0, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4],
+    "optim_beta1": [0.85, 0.87, 0.9, 0.93, 0.95],
+    "optim_beta2": [0.98, 0.99, 0.999, 0.9999],
+    "optim_type": "adamw",
+
+    "hidden_layers": [1, 2, 3, 4, 5],
+    "hidden_dims": [64, 128, 256, 512, 768, 1024],
+    "latent_dims": [64, 128, 256, 512, 768, 1024],
+    "activation_function": ["relu", "leaky"],
+    
+    "norm_layer": [null, "batch", "group", "layer"],
+    "conv_kernel": [3, 5, 7, 9],
+    "conv_stride": 1,
+    "hidden_factor": 2.0,
+    "negative_slope": 0.01,
+
+    "enable_earlystop": true,
+    "earlystop_patience": 5,
+    "earlystop_min_delta": 1e-4,
+
+    "log_epoch_frequency": 5,
+    "log_batch_frequency": 0,
+    "plot_last_batch_frequency": 0,
+    "plot_last_batch_limit": 5
+}

@@ -7,18 +7,15 @@ class CNNDecoder(NN.Module):
         self, 
         input_channels: int,
         input_size: int,
-        conv_kernel: int,
-        conv_stride: int,
-        apply_groupnorm: bool,
-        device: pt.DeviceObjType,
-        generator: pt.Generator,
+        conv_kernel: int=3,
+        conv_stride: int=1,
         hidden_layers: int=3, 
-        hidden_dims: int=128, 
+        hidden_dims: int=256, 
         hidden_factor: float=2.0,
-        latent_dims: int=64, 
-        activation_name: str = "relu",
+        latent_dims: int=128, 
+        activation_function: str = "relu",
         negative_slope: float = 0.01,
-        apply_batchnorm: bool = False,
+        norm_layer: str = "none"
     ): 
         super(CNNDecoder, self).__init__()
         
@@ -33,13 +30,20 @@ class CNNDecoder(NN.Module):
         self.hidden_dims = hidden_dims
         self.hidden_factor = hidden_factor
         self.latent_dims = latent_dims 
-        self.activation_name = activation_name
+        self.activation_function = activation_function
         self.negative_slope = negative_slope
-        self.apply_batchnorm = apply_batchnorm
-        self.apply_groupnorm = apply_groupnorm
+        self.norm_layer = norm_layer
+
+        # initialize kernel settings
+        if conv_kernel % 2 == 0 or conv_kernel < 3:
+            raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{conv_kernel}'")
         self.conv_kernel = conv_kernel
         self.conv_stride = conv_stride
-        self.conv_padding = (self.conv_kernel - self.conv_stride) // 2
+        # symmetric padding that works with stride >= 1 and odd kernels only
+        self.conv_padding = self.conv_kernel  // 2
+
+        if self.conv_kernel % 2 == 0 or self.conv_kernel < 3:
+            raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{self.conv_kernel}'")
 
         # mirror encoder: hidden dims go small → large
         # encoder: [128, 64, 32], decoder: [32, 64, 128]
@@ -109,24 +113,28 @@ class CNNDecoder(NN.Module):
         # ==================================================
 
     def _get_activation(self):
-        if self.activation_name == "relu":
+        if self.activation_function == "relu":
             return NN.ReLU()
-        elif self.activation_name == "leaky":
+        elif self.activation_function == "leaky":
             return NN.LeakyReLU(negative_slope=self.negative_slope)
-        elif self.activation_name == "tanh":
+        elif self.activation_function == "tanh":
             return NN.Tanh()
         else:
-            raise ValueError(f"unsupported activation_name '{self.activation_name}'")
+            raise ValueError(f"unsupported activation_function '{self.activation_function}'")
 
     def _get_norm_layer(self, out_chan):
-        if self.apply_batchnorm:
+        if self.norm_layer == "batch":
             return NN.BatchNorm2d(out_chan)
-        elif self.apply_groupnorm:
+        elif self.norm_layer == "layer":
+            return NN.LayerNorm(out_chan)
+        elif self.norm_layer == "group":
             num_groups = min(8, out_chan)
             while out_chan % num_groups != 0:
                 num_groups -= 1
             return NN.GroupNorm(num_groups, out_chan)
         return NN.Identity()
+    
+
     def _init_weights(self, module):
         # ==================================================
         # CONTRIBUTION START: Encoder Weight Initialization
@@ -134,11 +142,11 @@ class CNNDecoder(NN.Module):
         # ==================================================
         if not isinstance(module, (NN.Conv2d, NN.ConvTranspose2d, NN.Linear)):
             return
-        if self.activation_name == "relu":
+        if self.activation_function == "relu":
             NN.init.kaiming_normal_(module.weight, nonlinearity="relu")
-        elif self.activation_name == "leaky":
+        elif self.activation_function == "leaky":
             NN.init.kaiming_normal_(module.weight, a=self.negative_slope, nonlinearity="leaky_relu")
-        elif self.activation_name == "tanh":
+        elif self.activation_function == "tanh":
             NN.init.xavier_normal_(module.weight)
         if module.bias is not None:
             NN.init.zeros_(module.bias)
@@ -183,20 +191,17 @@ def test_main(args):
     expected_output_shape = (batch_size, input_channels, input_size, input_size)
 
     model = CNNDecoder(
-        input_channels=input_channels,
-        input_size=input_size,
-        hidden_layers=3,
+        input_channels, 
+        input_size, 
+        conv_kernel=5,
+        conv_stride=1,
+        hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
-        activation_name="relu",
-        negative_slope=0.01,
-        apply_batchnorm=False,
-        apply_groupnorm=False,
-        conv_kernel=5,
-        conv_stride=1,
-        device=device,
-        generator=None,
+        activation_function="relu",
+        negative_slope= 0.01,
+        norm_layer="group"
     )
 
     logger.debug(f"Latent input shape: {dummy_latent.shape}")
