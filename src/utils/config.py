@@ -6,14 +6,17 @@ from src.utils.common import copy, AttrDict
 
 
 DEFAULT_TRAIN_CONFIG = {
+    "debug": False,
+    "image_shape": [5, 64, 64],
+    "num_workers": 1,
+    "random_seed": 42,
+
     "mask_ratio": 0.0,
-    "num_epochs": 200,
-    "batch_size": 64,
-    "num_epochs": 2,
-    "batch_size": 32,
+    "num_epochs": 50,
     "ssim_loss_weight": 0.5,
 
-    "learn_rate": 1e-4,
+    "batch_size": 64,
+    "learn_rate": 5e-4,
     "lr_scheduler": "plateau",
     "lr_scheduler_patience": 3,
     "lr_scheduler_factor": 0.2,
@@ -25,23 +28,23 @@ DEFAULT_TRAIN_CONFIG = {
     "optim_type": "adamw",
 
     "hidden_layers": 3,
-    "hidden_dims": 256,
+    "hidden_dims": 128,
     "latent_dims": 128,
     "conv_kernel": 3,
-    "conv_stride": 2,
+    "conv_stride": 1,
 
     "activation_function": "relu",
     "norm_layer": "none",   
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
-    "expand_channels": True,
+    "ascending_channels": False,
 
     "enable_earlystop": True,
     "earlystop_patience": 5,
     "earlystop_min_delta": 1e-4,
 
     "log_epoch_frequency": 1,
-    "log_batch_frequency": 10,
+    "log_batch_frequency": 14,
     "plot_last_batch_frequency": 1,
     "plot_last_batch_limit": 3
 }
@@ -176,9 +179,9 @@ def validate_config(config):
     if config["hidden_factor"] <= 0:
         raise ValueError("hidden_factor must be a FLOAT > 0")
     
-    # expand_channels
-    if not isinstance(config["expand_channels"], bool):
-        raise ValueError("expand_channels ust be a BOOL")
+    # ascending_channels
+    if not isinstance(config["ascending_channels"], bool):
+        raise ValueError("ascending_channels ust be a BOOL")
     
     # enable_earlystop
     if not isinstance(config["enable_earlystop"], bool):

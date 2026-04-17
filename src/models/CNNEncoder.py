@@ -9,7 +9,7 @@ class CNNEncoder(NN.Module):
         input_channels: int,
         input_size: int,
         conv_kernel: int=3,
-        conv_stride: int=2,
+        conv_stride: int=1,
         hidden_layers: int=3, 
         hidden_dims: int=256, 
         hidden_factor: float=2.0,
@@ -17,7 +17,7 @@ class CNNEncoder(NN.Module):
         activation_function: str = "relu",
         negative_slope: float = 0.01,
         norm_layer: str = "none",
-        expand_channels: bool = False
+        ascending_channels: bool = False
     ): 
         super(CNNEncoder, self).__init__()
 
@@ -36,7 +36,7 @@ class CNNEncoder(NN.Module):
         self.hidden_dims = hidden_dims
         self.latent_dims = latent_dims
         self.hidden_factor = hidden_factor
-        self.expand_channels = expand_channels
+        self.ascending_channels = ascending_channels
 
         # initialize other network settings
         self.norm_layer = norm_layer
@@ -55,8 +55,10 @@ class CNNEncoder(NN.Module):
         self.hidden_per_layer = [int(self.hidden_dims / (self.hidden_factor ** i)) for i in range(self.hidden_layers)]
         if self.hidden_per_layer[-1] < 4:
             raise ValueError(f"hidden_factor={self.hidden_factor} is too large to reduce hidden_dims={self.hidden_dims} across hidden_layers={self.hidden_layers}\nComputed hidden dims: {self.hidden_per_layer}")
-
-        if self.expand_channels:
+        
+        # if ascending_channels is True: encoder channels INCREASE with depth (reverse hidden dims per layer)
+        # Otherwise: encoder channels DECEASE with depth (leave as is)
+        if self.ascending_channels:
             self.hidden_per_layer = self.hidden_per_layer[::-1]
 
         compute_output_size = lambda x: ((x - self.conv_kernel + 2 * self.conv_padding) // self.conv_stride) + 1
@@ -101,7 +103,7 @@ class CNNEncoder(NN.Module):
 
         # compute the flattened spatial dims of the hidden output
         self.output_size_HxW = output_size ** 2
-        reduced_channels = max(self.hidden_per_layer[-1] // 2, 4)
+        reduced_channels = int(max(self.hidden_per_layer[-1] // self.hidden_factor, 4))
         # init encoder output layer: project hidden_output => latent_z
         # Flatten all dims except the batches
         # Linear Input Shape: (N, C * H * W) 
@@ -114,7 +116,6 @@ class CNNEncoder(NN.Module):
                 stride=1,
                 padding=0,
             ),
-            self._get_activation(),
             NN.Flatten(start_dim=1),    
             NN.Linear(                  
                 in_features=reduced_channels * self.output_size_HxW,
@@ -230,15 +231,15 @@ def test_main(args):
         input_channels, 
         input_size, 
         conv_kernel=3,
-        conv_stride=2,
+        conv_stride=1,
         hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
-        activation_function="relu",
+        activation_function="leaky",
         negative_slope= 0.01,
         norm_layer="group",
-        expand_channels=True
+        ascending_channels=True
     )
 
     dummy_input_batch = pt.randn(batch_input_shape)

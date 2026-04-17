@@ -76,17 +76,19 @@ class ModelTrainer:
         self.checkpoints_dir = self.artifacts_dir / "checkpoints"
         self.plots_dir = self.artifacts_dir / "plots"
         self.metrics_dir = self.artifacts_dir / "metrics"
+        self.samples_dir = self.artifacts_dir / "samples"
 
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self.plots_dir.mkdir(parents=True, exist_ok=True)
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
+        self.samples_dir.mkdir(parents=True, exist_ok=True)
 
         prep_datasets_path = self.input_folder / "prepare_datasets.pth"
         self.prepare_datasets = PrepareDatasets.load(
             prep_datasets_path,
             batch_size=self.config["batch_size"],
-            num_workers=min(1, self.config["num_workers"]-1),
+            num_workers=max(1, self.config["num_workers"]-1),
             random_seed=self.config["random_seed"],
         )
 
@@ -105,6 +107,9 @@ class ModelTrainer:
         self.config["mask_ratio"] = prep_metadata["dataset_masking"]["mask_ratio"]
 
         self.mae_model = MaskedAutoencoder(self.config)
+        self.logger.debug(f"CNNEncoder.hidden_per_layer: {self.mae_model.encoder.hidden_per_layer}")
+        self.logger.debug(f"CNNDecoder.hidden_per_layer: {self.mae_model.decoder.hidden_per_layer}")
+
         self.setup_optimizer(self.mae_model)
         self.criterion = masked_reconstruction_loss
 
@@ -147,7 +152,7 @@ class ModelTrainer:
         self._should_plot_last_batch = lambda epoch=None: (
             self.config["plot_last_batch_frequency"] > 0
             and self.config["plot_last_batch_limit"] > 0
-            and (epoch is None or (isinstance(epoch, int)
+            and (epoch is None or isinstance(epoch, str) or (isinstance(epoch, int)
                     and (epoch == 0
                         or epoch == self.config["num_epochs"]
                         or epoch % self.config["plot_last_batch_frequency"] == 0)
@@ -226,7 +231,7 @@ class ModelTrainer:
         self.not_improved_epochs += 1
         return False
     
-    def save_checkpoint(self, file_name, model_state_dict, extra_data=None):
+    def save_model_checkpoint(self, file_name, model_state_dict, extra_data=None):
         checkpoint = {
             "model_state_dict": model_state_dict,
             "config": self.config,
@@ -240,14 +245,15 @@ class ModelTrainer:
         if batch is None:
             return None
         
+
         batch_samples = {
             "original_id": batch.original_id,
-            "x_input": batch.x_masked_image.detach().cpu(),
-            "x_mask": batch.masked_region_map.detach().cpu(),
-            "y_target": batch.y_target_image.detach().cpu(),
-            "y_redshift": batch.y_specz_redshift.detach().cpu(),
-            "y_recon": y_recon.detach().cpu(),
-            "z_latent": z_latent.detach().cpu() if z_latent is not None else None,
+            "masked_region_map": batch.masked_region_map.detach().cpu(),
+            "x_masked_image": batch.x_masked_image.detach().cpu(),
+            "y_target_image": batch.y_target_image.detach().cpu(),
+            "y_recon_image": y_recon.detach().cpu(),
+            "z_latent_vector": z_latent.detach().cpu() if z_latent is not None else None,
+            "y_specz_redshift": batch.y_specz_redshift.detach().cpu(),
         }
 
         return batch_samples
@@ -259,40 +265,41 @@ class ModelTrainer:
             return None
 
         original_id = sample_data["original_id"]
-        x_mask = sample_data["x_mask"]
+        masked_map = sample_data["masked_region_map"]
 
+        x_masked = sample_data["x_masked_image"]
+        y_target = sample_data["y_target_image"]
+        y_recon = sample_data["y_recon_image"]
+        y_redshift = sample_data["y_specz_redshift"]
+    
         if inverse_transform:
-            x_input = self.transform.inverse_transform(sample_data["x_input"])
-            y_target = self.transform.inverse_transform(sample_data["y_target"])
-            y_recon = self.transform.inverse_transform(sample_data["y_recon"])
-            y_redshift = self.transform.inverse_transform_specz(sample_data["y_redshift"])
+            x_masked = self.transform.inverse_transform(x_masked)
+            y_target = self.transform.inverse_transform(y_target)
+            y_recon = self.transform.inverse_transform(y_recon)
+            y_redshift = self.transform.inverse_transform_specz(y_redshift)
 
-            x_mask_broadcast = x_mask.repeat(1, x_input.shape[1], 1, 1)
-            x_input = x_input * (x_mask_broadcast <= 0.5)
-        else:
-            x_input = sample_data["x_input"]
-            y_target = sample_data["y_target"]
-            y_recon = sample_data["y_recon"]
-            y_redshift = sample_data["y_redshift"]
-
-        max_samples = min(len(original_id), self.config.get("plot_last_batch_limit", 5))
+            masked_map_broadcast = masked_map.repeat(1, x_masked.shape[1], 1, 1)
+            x_masked = x_masked * (masked_map_broadcast <= 0.5)
 
         file_name = f"{split}.png"
         figure_title = f"{split.title()} Sample"
         if epoch is not None:
             file_name = file_name.replace(".png", f"_epoch_{epoch}.png")
             figure_title += f" | Epoch #{epoch}"
+            
+        total_samples = len(original_id)
+        max_samples = min(total_samples, self.config["plot_last_batch_limit"])
+        sample_indices = np.random.choice(total_samples, size=max_samples, replace=False)
 
         save_path = self.plots_dir / file_name
         plot_image_samples(
-            original_id=original_id,
-            masked_inputs=x_input,
-            masks=x_mask,
-            targets=y_target,
-            reconstructions=y_recon,
-            redshifts=y_redshift,
+            original_id=[original_id[i] for i in sample_indices],
+            masked_map=masked_map[sample_indices],
+            x_masked=x_masked[sample_indices],
+            y_target=y_target[sample_indices],
+            y_recon=y_recon[sample_indices],
+            y_redshift=y_redshift[sample_indices],
             save_path=save_path,
-            max_samples=max_samples,
             figure_title=figure_title,
             band_names=("g", "r", "i", "z", "y"),
             cmap_name="inferno",    
@@ -304,14 +311,14 @@ class ModelTrainer:
         self.logger.info(f"[{split}] saved {max_samples} sample plots to: {self.plots_dir}")
 
 
-    def save_results(self, test_metrics):
+    def save_result_metrics(self, test_metrics):
         history_path = self.metrics_dir / "model_history.json"
         plot_path = self.plots_dir / "learning_curves.png"
 
         save_to_json(history_path, self.history)
         plot_learning_curves(self.history, plot_path)
 
-        result_metrics = {
+        result_metadata = {
             "best_epoch": self.best_model_epoch,
             "best_valid_loss": self.best_valid_loss,
             "test_metrics": test_metrics,
@@ -322,11 +329,9 @@ class ModelTrainer:
             "config_path": str(self.output_folder / "resolved_train_config.json"),
         }
 
-        save_to_json(self.output_folder / "result_metrics.json", result_metrics)
-        return result_metrics
-    
+        save_to_json(self.output_folder / "result_metadata.json", result_metadata)
+        return result_metadata
 
-    
     def train(self, model, epoch=None):
         model.train()
         self.logger.debug(f"[TRAIN] model.training={model.training}")
@@ -350,7 +355,6 @@ class ModelTrainer:
                 y_recon = model.decode(z_latent)
                 validate_tensor("y_recon", y_recon)
 
-
                 loss, smooth_l1, ssim_loss = self.criterion(
                     recon_image=y_recon,
                     target_image=y_target,
@@ -365,7 +369,7 @@ class ModelTrainer:
                 total_loss += loss.detach().item()
                 total_smooth_l1 += smooth_l1.detach().item()
                 total_ssim_loss += ssim_loss.detach().item()
-
+                
                 if self._should_log_batch(batch_idx, total_batches):
                     avg_loss = total_loss / batch_idx
                     self.logger.info(
@@ -416,7 +420,7 @@ class ModelTrainer:
 
                 y_recon = model.decode(z_latent)
                 validate_tensor("y_recon", y_recon)
-
+    
                 loss, smooth_l1, ssim_loss = self.criterion(
                     recon_image=y_recon,
                     target_image=y_target,
@@ -427,7 +431,7 @@ class ModelTrainer:
                 total_loss += loss.detach().item()
                 total_smooth_l1 += smooth_l1.detach().item()
                 total_ssim_loss += ssim_loss.detach().item()
-
+    
                 if self._should_log_batch(batch_idx, total_batches):
                     avg_loss = total_loss / batch_idx
                     self.logger.info(
@@ -497,7 +501,7 @@ class ModelTrainer:
             })
 
             if has_improved:
-                self.save_checkpoint(
+                self.save_model_checkpoint(
                     file_name="best_model.pth",
                     model_state_dict=self.best_model_state,
                     extra_data={
@@ -506,7 +510,7 @@ class ModelTrainer:
                         "history": self.history,
                     },
                 )
-
+                
             if self._should_earlystop():
                 self.logger.info(
                     f"Early stopping at epoch={epoch}, "
@@ -515,29 +519,42 @@ class ModelTrainer:
                 )
                 break
     
-        self.mae_model.load_state_dict(self.best_model_state)
-        test_metrics = self.evaluate(self.mae_model, is_validation=False, epoch="Best")
-
-        self.logger.info(
-            f"[TEST] objective_loss={test_metrics['objective_loss']:.8f}, "
-            f"smooth_l1={test_metrics['smooth_l1']:.8f}, "
-            f"ssim_loss={test_metrics['ssim_loss']:.8f}"
-        )
-
-        self.save_checkpoint(
+        # final model results
+        final_test_metrics = self.evaluate(self.mae_model, is_validation=False, epoch="final")
+        self.save_model_checkpoint(
             file_name="final_model.pth",
             model_state_dict=self.mae_model.state_dict(),
             extra_data={
-                "best_epoch": self.best_model_epoch,
-                "best_valid_loss": self.best_valid_loss,
-                "test_metrics": test_metrics,
+                "final_model_epoch": epoch,
+                "final_valid_loss": valid_loss,
+                "final_test_metrics": final_test_metrics,
                 "history": self.history,
             },
         )
 
-        res = self.save_results(test_metrics)
-        return res
-    
+        # best model results
+        self.mae_model.load_state_dict(self.best_model_state)
+
+        best_test_metrics = self.evaluate(self.mae_model, is_validation=False, epoch="best")
+        self.save_model_checkpoint(
+            file_name="best_model.pth",
+            model_state_dict=self.mae_model.state_dict(),
+            extra_data={
+                "best_model_epoch": self.best_model_epoch,
+                "best_valid_loss": self.best_valid_loss,
+                "best_test_metrics": best_test_metrics,
+                "history": self.history,
+            },
+        )
+
+        result_metadata = self.save_result_metrics(best_test_metrics)
+
+        self.logger.info(
+            f"[TEST] objective_loss={best_test_metrics['objective_loss']:.8f}, "
+            f"smooth_l1={best_test_metrics['smooth_l1']:.8f}, "
+            f"ssim_loss={best_test_metrics['ssim_loss']:.8f}"
+        )
+        return result_metadata
 
 @log_execution_time
 def main(args):

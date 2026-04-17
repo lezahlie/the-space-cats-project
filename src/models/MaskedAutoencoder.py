@@ -40,7 +40,7 @@ class MaskedAutoencoder(NN.Module):
         self.hidden_layers = config.get('hidden_layers', 3)
         self.hidden_dims = config.get('hidden_dims', 512)
         self.latent_dims = config.get('latent_dims', 256)
-        self.expand_channels = config.get('expand_channels', True)
+        self.ascending_channels = config.get('ascending_channels', True)
 
         assert self.hidden_factor > 1.0, f"hidden_factor must be > 1.0, not '{self.hidden_factor}'"
         assert self.hidden_layers > 0, f"hidden_layers must be at least 1, not '{self.hidden_layers}'"
@@ -160,7 +160,7 @@ def test_main(args):
         args.random_seed
     )
 
-    batch_size = 20
+    batch_size = 32
     input_channels = 5
     input_size = 64
     latent_dims = 128

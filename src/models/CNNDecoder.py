@@ -16,7 +16,7 @@ class CNNDecoder(NN.Module):
         activation_function: str = "relu",
         negative_slope: float = 0.01,
         norm_layer: str = "none",
-        expand_channels: bool = False
+        ascending_channels: bool = False
     ): 
         super(CNNDecoder, self).__init__()
         
@@ -34,7 +34,7 @@ class CNNDecoder(NN.Module):
         self.activation_function = activation_function
         self.negative_slope = negative_slope
         self.norm_layer = norm_layer
-        self.expand_channels = expand_channels
+        self.ascending_channels = ascending_channels
 
         # initialize kernel settings
         if conv_kernel % 2 == 0 or conv_kernel < 3:
@@ -46,13 +46,16 @@ class CNNDecoder(NN.Module):
 
         if self.conv_kernel % 2 == 0 or self.conv_kernel < 3:
             raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{self.conv_kernel}'")
-        # mirror encoder: hidden dims go small → large
-        # encoder: [128, 64, 32], decoder: [32, 64, 128]
+        #   mirror encoder: hidden dims depend on ascending_channels
+        # encoder: [32, 64, 128], decoder: [128, 64, 32]
         self.hidden_per_layer = [
             int(self.hidden_dims / (self.hidden_factor ** i)) 
             for i in range(self.hidden_layers)
         ]
-        if not self.expand_channels:
+        
+        # if ascending_channels is True: decoder channels DECEASE with depth (leave as is)
+        # Otherwise: decoder channels INCREASE with depth (reverse hidden dims per layer)
+        if not self.ascending_channels:
             self.hidden_per_layer = self.hidden_per_layer[::-1]
 
         # compute the spatial size at the bottleneck
@@ -65,7 +68,7 @@ class CNNDecoder(NN.Module):
             bottleneck_size = compute_output_size(bottleneck_size)
             self.encoder_sizes.append(bottleneck_size)
     
-        self.reduced_channels = max(self.hidden_per_layer[0] // 2, 4)
+        self.reduced_channels = int(max(self.hidden_per_layer[0] // self.hidden_factor, 4))
         self.bottleneck_size = bottleneck_size
         self.bottleneck_HxW = bottleneck_size ** 2
         # input layer: Linear → Unflatten
@@ -79,7 +82,6 @@ class CNNDecoder(NN.Module):
                 dim=1, 
                 unflattened_size=(self.reduced_channels, self.bottleneck_size, self.bottleneck_size)
             ),
-            self._get_activation(),
             NN.Conv2d(
                 in_channels=self.reduced_channels,
                 out_channels=self.hidden_per_layer[0],
@@ -87,7 +89,6 @@ class CNNDecoder(NN.Module):
                 stride=1,
                 padding=0,
             ),
-            self._get_activation(),
         )
         # hidden layers: ConvTranspose2d × (hidden_layers - 1)
         current_size = self.bottleneck_size
@@ -135,7 +136,6 @@ class CNNDecoder(NN.Module):
         # ==================================================
 
 
-    
     def _get_output_padding(self, in_size: int, target_size: int) -> int:
         output_padding = target_size - (
             (in_size - 1) * self.conv_stride
@@ -232,15 +232,15 @@ def test_main(args):
         input_channels, 
         input_size, 
         conv_kernel=3,
-        conv_stride=2,
+        conv_stride=1,
         hidden_layers = 3,
         hidden_dims=128,
         hidden_factor=2.0,
         latent_dims=latent_dims,
-        activation_function="relu",
+        activation_function="leaky",
         negative_slope= 0.01,
         norm_layer="group",
-        expand_channels=True
+        ascending_channels=True
     )
 
     logger.debug(f"Latent input shape: {dummy_latent.shape}")
@@ -253,7 +253,7 @@ def test_main(args):
 
     assert decoder_output.shape == pt.Size(list(expected_output_shape)), \
         f"Shape mismatch! Got {decoder_output.shape}, expected {expected_output_shape}"
-    logger.debug("✅ Decoder output shape matches expected shape!")
+    logger.debug("Decoder output shape matches expected shape!")
 
 
 if __name__ == "__main__":

@@ -12,81 +12,54 @@ def tensor_to_image(x):
     return np.asarray(x)
 
 
-def ensure_band_first_image(x, expected_bands=None):
-    x = tensor_to_image(x)
-
-    if x.ndim == 2:
-        x = x[None, :, :]
-    elif x.ndim == 3:
-        if x.shape[0] <= 8:
-            pass
-        elif x.shape[-1] <= 8:
-            x = np.transpose(x, (2, 0, 1))
-        else:
-            raise ValueError(f"Could not infer band dimension from shape={x.shape}")
-    else:
-        raise ValueError(f"Expected 2D or 3D image, got shape={x.shape}")
-
-    if expected_bands is not None and x.shape[0] != expected_bands:
-        raise ValueError(f"Expected {expected_bands} bands, got shape={x.shape}")
-
-    return x
-
-
-def ensure_band_first_mask(mask, num_bands):
-    mask = tensor_to_image(mask)
+def set_masked_values(x_images, mask_map, value=0.0):
+    x_images = np.asarray(x_images, dtype=np.float32).copy()
+    mask = np.asarray(mask_map, dtype=bool)
 
     if mask.ndim == 2:
-        mask = np.repeat(mask[None, :, :], num_bands, axis=0)
-    elif mask.ndim == 3:
-        if mask.shape[0] == num_bands:
-            pass
-        elif mask.shape[-1] == num_bands:
-            mask = np.transpose(mask, (2, 0, 1))
-        elif mask.shape[0] == 1:
-            mask = np.repeat(mask, num_bands, axis=0)
-        elif mask.shape[-1] == 1:
-            mask = np.transpose(mask, (2, 0, 1))
-            mask = np.repeat(mask, num_bands, axis=0)
-        else:
-            raise ValueError(f"Mask shape {mask.shape} does not match num_bands={num_bands}")
+        mask = np.broadcast_to(mask_map[None, :, :], x_images.shape)
+    elif mask.ndim == 3 and mask.shape[0] == 1:
+        mask = np.broadcast_to(mask, x_images.shape)
+    elif mask.ndim == 3 and mask.shape[0] == x_images.shape[0]:
+        pass
     else:
-        raise ValueError(f"Expected 2D or 3D mask, got shape={mask.shape}")
+        raise ValueError(f"Unsupported masked_map shape {mask.shape} for x_masked shape {x_images.shape}")
 
-    return mask
-
-def make_mask_overlay(mask_2d):
-    mask_2d = np.asarray(mask_2d, dtype=np.float32)
-    overlay = np.zeros((mask_2d.shape[0], mask_2d.shape[1], 4), dtype=np.float32)
-    overlay[..., :3] = 1.0
-    overlay[..., 3] = (mask_2d > 0.5).astype(np.float32)
-    return overlay
+    x_images[mask] = value
+    return x_images
 
 
 def plot_single_sample(
-    masked_input,
-    mask,
-    target,
-    reconstruction,
+    masked_map,
+    x_masked,
+    y_target,
+    y_recon,
     save_path,
     figure_title=None,
     band_names=("g", "r", "i", "z", "y"),
     cmap_name="inferno",
 ):
-    num_bands = len(band_names)
-
     title_fs = 24
     col_title_fs = 20
     row_label_fs = 20
     cbar_tick_fs = 16
+    
+    x_masked_nan = set_masked_values(x_masked, masked_map, value=np.nan)
+    y_target = np.asarray(y_target, dtype=np.float32)
+    y_recon = np.asarray(y_recon, dtype=np.float32)
+    target_vminmax = np.nanmin(y_target).astype(float), np.nanmax(y_target).astype(float)
+    recon_vminmax = np.nanmin(y_recon).astype(float), np.nanmax(y_recon).astype(float)
 
-    masked_input = ensure_band_first_image(masked_input, expected_bands=num_bands)
-    target = ensure_band_first_image(target, expected_bands=num_bands)
-    reconstruction = ensure_band_first_image(reconstruction, expected_bands=num_bands)
+    row_data = [
+        ("Masked X", x_masked_nan, target_vminmax),
+        ("Target Y", y_target, target_vminmax),
+        ("Recon Y", y_recon, recon_vminmax)
+    ]
 
-    _ = mask
+    num_rows = len(row_data)
+    num_bands = len(x_masked)
 
-    def _set_five_data_ticks(cbar, vmin, vmax):
+    def _set_cbar_ticks(cbar, vmin=None, vmax=None):
         ticks = np.linspace(vmin, vmax, 5)
         cbar.set_ticks(ticks)
         cbar.formatter = mtick.FormatStrFormatter("%.3g")
@@ -109,7 +82,7 @@ def plot_single_sample(
         _style_axis(ax)
 
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        _set_five_data_ticks(cbar, vmin, vmax)
+        _set_cbar_ticks(cbar, vmin, vmax)
 
         if col_title is not None:
             ax.set_title(col_title, fontsize=col_title_fs, pad=10)
@@ -123,24 +96,10 @@ def plot_single_sample(
                 va="center",
             )
 
-    fig, axes = plt.subplots(
-        3,
-        num_bands,
-        figsize=(5.2 * num_bands, 12),
-        squeeze=False,
-    )
 
-    row_data = [
-        ("Masked X", masked_input),
-        ("Target Y", target),
-        ("Recon Y", reconstruction),
-    ]
+    fig, axes = plt.subplots(num_rows, num_bands, figsize=(5 * num_bands, num_rows*4), squeeze=False)
 
-    for row_idx, (row_name, row_images) in enumerate(row_data):
-        row_images_np = np.asarray(row_images, dtype=np.float32)
-        row_vmin = float(row_images_np.min())
-        row_vmax = float(row_images_np.max())
-
+    for row_idx, (row_name, row_images, (vmin_val, vmax_val)) in enumerate(row_data):
         for band_idx, band_name in enumerate(band_names):
             row_label = row_name if band_idx == 0 else None
             col_title = f"Channel {band_name.upper()}" if row_idx == 0 else None
@@ -150,8 +109,8 @@ def plot_single_sample(
                 row_images[band_idx],
                 row_label=row_label,
                 col_title=col_title,
-                vmin=row_vmin,
-                vmax=row_vmax,
+                vmin=vmin_val,
+                vmax=vmax_val
             )
 
     if figure_title:
@@ -166,16 +125,14 @@ def plot_single_sample(
     plt.close(fig)
 
 
-
 def plot_image_samples(
     original_id,
-    masked_inputs,
-    masks,
-    targets,
-    reconstructions,
+    masked_map,
+    x_masked,
+    y_target,
+    y_recon,
+    y_redshift,
     save_path,
-    redshifts=None,
-    max_samples=4,
     figure_title=None,
     band_names=("g", "r", "i", "z", "y"),
     cmap_name="inferno",
@@ -191,8 +148,8 @@ def plot_image_samples(
     saved_paths = []
     stem = save_path.stem
     suffix = save_path.suffix if save_path.suffix else ".png"
-    sample_indices = np.random.choice(num_samples, size=max_samples, replace=False)
-    for sample_idx in sample_indices:
+
+    for sample_idx in range(num_samples):
         sample_save_path = save_path.parent / f"{stem}_sample_{sample_idx + 1}{suffix}"
 
         sample_original_id = original_id[sample_idx]
@@ -200,18 +157,17 @@ def plot_image_samples(
             sample_original_id = sample_original_id.item()
 
         sample_title = f"{figure_title} | Original_id={sample_original_id}"
-        if redshifts is not None:
-            sample_redshift = redshifts[sample_idx]
-            if hasattr(redshifts[sample_idx], "item"):
+        if y_redshift is not None:
+            sample_redshift = y_redshift[sample_idx]
+            if hasattr(y_redshift[sample_idx], "item"):
                 sample_redshift = sample_redshift.item()
-            sample_title += f" | Redshift={sample_redshift}"
-
+            sample_title += f" | Redshift={sample_redshift:.2f}"
 
         plot_single_sample(
-            masked_input=masked_inputs[sample_idx],
-            mask=masks[sample_idx],
-            target=targets[sample_idx],
-            reconstruction=reconstructions[sample_idx],
+            masked_map=masked_map[sample_idx],
+            x_masked=x_masked[sample_idx],
+            y_target=y_target[sample_idx],
+            y_recon=y_recon[sample_idx],
             save_path=sample_save_path,
             figure_title=sample_title,
             band_names=band_names,
