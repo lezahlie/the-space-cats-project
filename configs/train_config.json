@@ -1,7 +1,7 @@
 {
     "_description": "base training config with default hyper-parameters",
 
-    "num_epochs": 50,
+    "num_epochs": 25,
     "batch_size": 64,
     "ssim_loss_weight": 0.5,
 
@@ -22,7 +22,7 @@
     "conv_kernel": 3,
     "conv_stride": 1,
 
-    "activation_function": "relu",
+    "activation_function": "leaky",
     "norm_layer": null,   
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
@@ -35,6 +35,6 @@
     "log_epoch_frequency": 1,
     "log_batch_frequency": 14,
     "plot_last_batch_frequency": 1,
-    "plot_last_batch_limit": 3
+    "plot_last_batch_limit": 1
 }
 

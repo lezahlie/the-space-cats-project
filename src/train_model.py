@@ -29,7 +29,9 @@ def process_args():
                 help="PyTorch device can only use default CPU; Overrides other device options | default: Off")
     parser.add_argument('--num-cores', dest="num_cores", type=int, default=1, 
                 help="Number of cpu cores (tasks) to run in parallel. If multi-threading is enabled, max threads is set to (num_tasks * 2) | default: 1")
-
+    parser.add_argument('--enable-deterministic',  dest='enable_deterministic', action='store_true', 
+                help="Enables deterministic algorithms at the cost of higher runtimes | default: Off")
+    
     args = parser.parse_args()
 
     if isinstance(args.gpu_device_list, int):
@@ -65,7 +67,7 @@ class ModelTrainer:
         device="cuda" if pt.cuda.is_available() else "cpu",
     ):
         self.logger = get_logger()
-        self.device = device
+        self.device = device if isinstance(device, pt.device) else pt.device(device)
         self.config = validate_config(merge_config(config))
 
         self.input_folder = Path(input_folder).resolve()
@@ -88,8 +90,9 @@ class ModelTrainer:
         self.prepare_datasets = PrepareDatasets.load(
             prep_datasets_path,
             batch_size=self.config["batch_size"],
-            num_workers=max(1, self.config["num_workers"]-1),
+            num_workers=max(1, self.config["num_workers"]),
             random_seed=self.config["random_seed"],
+            pin_memory=self.device.type == "cuda"
         )
 
         self.train_loader = self.prepare_datasets.train_dataloader
@@ -350,10 +353,12 @@ class ModelTrainer:
                 y_target = batch.y_target_image.to(self.device, non_blocking=True)
 
                 z_latent = model.encode(x_input)
-                validate_tensor("z_latent", z_latent)
+                if self.config["debug"]:
+                    validate_tensor("z_latent", z_latent)
 
                 y_recon = model.decode(z_latent)
-                validate_tensor("y_recon", y_recon)
+                if self.config["debug"]:
+                    validate_tensor("y_recon", y_recon)
 
                 loss, smooth_l1, ssim_loss = self.criterion(
                     recon_image=y_recon,
@@ -416,10 +421,12 @@ class ModelTrainer:
                 y_target = batch.y_target_image.to(self.device, non_blocking=True)
 
                 z_latent = model.encode(x_input)
-                validate_tensor("z_latent", z_latent)
-
+                if self.config["debug"]:
+                    validate_tensor("z_latent", z_latent)
+                    
                 y_recon = model.decode(z_latent)
-                validate_tensor("y_recon", y_recon)
+                if self.config["debug"]:
+                    validate_tensor("y_recon", y_recon)
     
                 loss, smooth_l1, ssim_loss = self.criterion(
                     recon_image=y_recon,
@@ -453,7 +460,6 @@ class ModelTrainer:
         }
 
         return metrics
-
 
     def train_model(self):
         self.mae_model = self.mae_model.to(self.device)
@@ -556,6 +562,7 @@ class ModelTrainer:
         )
         return result_metadata
 
+
 @log_execution_time
 def main(args):
     if args.debug:
@@ -569,6 +576,7 @@ def main(args):
         args.gpu_device_list,
         args.gpu_memory_fraction,
         args.random_seed,
+        args.enable_deterministic
     )
 
     logger.info(f"Using device = {device}")
@@ -580,7 +588,6 @@ def main(args):
         "random_seed": args.random_seed,
     })
 
-    
     trainer = ModelTrainer(train_config, args.input_folder, args.output_folder,device=device)
     results = trainer.train_model()
 

@@ -94,21 +94,35 @@ class SetupDevice:
         return device
 
     @staticmethod
-    def setup_generators(seed: int):
+    def setup_generators(seed: int, deterministic: bool = False):
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
         random.seed(seed)
         np.random.seed(seed)
         pt.manual_seed(seed)
-        pt.cuda.manual_seed_all(seed)
+
+        if pt.cuda.is_available():
+            pt.cuda.manual_seed(seed)
+            pt.cuda.manual_seed_all(seed)
+            
+
+        pt.backends.cudnn.benchmark = not deterministic
+        pt.backends.cudnn.deterministic = deterministic
+        pt.use_deterministic_algorithms(deterministic)
+
 
     @staticmethod
-    def setup_torch_device(num_tasks, cpu_device_only, gpu_list=None, gpu_memory=None, random_seed=None):
+    def setup_torch_device(num_tasks, cpu_device_only, gpu_list=None, gpu_memory=None, random_seed=None, deterministic=False):
         SetupDevice.free_memory()
-        SetupDevice.setup_generators(random_seed)
+        SetupDevice.setup_generators(random_seed, deterministic=deterministic)
 
         get_logger().info(f"Pytorch version: {pt.__version__}")
         get_logger().info(f"CUDA Support: {pt.backends.cuda.is_built()}")
         get_logger().info(f"MPS Support: {pt.backends.mps.is_built()}")
-
+        get_logger().info(f"Random Seed: {random_seed}")
+        get_logger().info(f"Deterministic Algorithms: {deterministic}")
+        
         SetupDevice.setup_torch_threads(num_tasks)
         pt.set_float32_matmul_precision('high')
         

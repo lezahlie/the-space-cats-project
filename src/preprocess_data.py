@@ -64,6 +64,7 @@ class PrepareDatasets:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.output_folder.mkdir(parents=True, exist_ok=True)
+        self.pin_memory = False
         self.generator = self.make_generator(self.random_seed)
         self.build_dataloaders() # default dataloaders
 
@@ -106,9 +107,11 @@ class PrepareDatasets:
             y_specz_redshift=pt.stack([item["y_specz_redshift"] for item in batch], dim=0),
             original_id=[item["original_id"] for item in batch],
         )
+
         return formatted.__dict__ if as_dict else formatted
 
     def build_dataloaders(self):
+
         self.train_dataloader = pt.utils.data.DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
@@ -117,8 +120,10 @@ class PrepareDatasets:
             generator=self.generator,
             worker_init_fn=self.seed_worker,
             collate_fn=self.collate_batch,
+            pin_memory=self.pin_memory,
+            persistent_workers=True
         )
-        
+
         self.valid_dataloader = pt.utils.data.DataLoader(
             dataset=self.valid_dataset,
             batch_size=self.batch_size,
@@ -127,6 +132,9 @@ class PrepareDatasets:
             generator=self.generator,
             worker_init_fn=self.seed_worker,
             collate_fn=self.collate_batch,
+            pin_memory=self.pin_memory,
+            persistent_workers=True
+
         )
         
         self.test_dataloader = pt.utils.data.DataLoader(
@@ -137,10 +145,12 @@ class PrepareDatasets:
             generator=self.generator,
             worker_init_fn=self.seed_worker,
             collate_fn=self.collate_batch,
+            pin_memory=self.pin_memory,
+            persistent_workers=True
         )
 
     @classmethod
-    def load(cls, path, batch_size: int = None, num_workers: int = None, random_seed: int = None):
+    def load(cls, path, batch_size: int = None, num_workers: int = None, random_seed: int = None, pin_memory=False):
         obj = None
         try:
             obj = pt.load(path, weights_only=False)
@@ -167,6 +177,10 @@ class PrepareDatasets:
 
         if isinstance(random_seed, int) and obj.random_seed != random_seed:
             obj.random_seed = random_seed
+            rebuild_dataloaders = True
+
+        if isinstance(pin_memory, bool) and obj.pin_memory != pin_memory:
+            obj.pin_memory = pin_memory
             rebuild_dataloaders = True
 
         obj.generator = obj.make_generator(obj.random_seed)
@@ -697,7 +711,7 @@ python src/preprocess_data.py \
 --input-folder data/galaxiesml_tiny \
 --output-folder data/preprocessed \
 --num-cores 2 \
---mask-ratio 0.25 \
+--mask-ratio 0.5 \
 --debug
 
 python src/preprocess_data.py \

@@ -1,4 +1,4 @@
-from utils.common import pt, Optional
+from src.utils.common import pt, Optional
 F=pt.nn.functional
 from torchmetrics.functional import structural_similarity_index_measure
 
@@ -7,69 +7,72 @@ from torchmetrics.functional import structural_similarity_index_measure
 # Contributor: Leslie Horace
 # ==================================================
 
-def _get_square_region(image, masked_region_map, i):
-    mask_2d = masked_region_map[i, 0] > 0.0
+def _get_coords_from_mask(masked_region_map: pt.Tensor):
+    if masked_region_map.ndim != 4 or masked_region_map.shape[1] != 1:
+        raise ValueError(f"Expected masked_region_map shape (B, 1, H, W), not {tuple(masked_region_map.shape)}")
 
-    rows = mask_2d.any(dim=1).nonzero(as_tuple=False).squeeze(-1)
-    cols = mask_2d.any(dim=0).nonzero(as_tuple=False).squeeze(-1)
+    mask_2d = masked_region_map[:, 0] > 0.0
+    row_has_mask = mask_2d.any(dim=2)   # (B, H)
+    col_has_mask = mask_2d.any(dim=1)   # (B, W)
 
-    if rows.numel() == 0 or cols.numel() == 0:
-        raise ValueError(f"No masked pixels found for sample {i}")
+    top = row_has_mask.to(pt.int64).argmax(dim=1)    # (B,)
+    left = col_has_mask.to(pt.int64).argmax(dim=1)   # (B,)
 
-    top = int(rows[0].item())
-    bottom = int(rows[-1].item()) + 1
-    left = int(cols[0].item())
-    right = int(cols[-1].item()) + 1
-
-    return image[i:i+1, :, top:bottom, left:right]
+    row_counts = row_has_mask.sum(dim=1)             # (B,)
+    col_counts = col_has_mask.sum(dim=1)             # (B,)
 
 
-def _masked_smooth_l1_term(recon_image: pt.Tensor, target_image: pt.Tensor, masked_region_map: Optional[pt.Tensor], reduction: str) -> pt.Tensor:
-    # compute smooth_l1 for entire batch
-    if masked_region_map is None:
-        smooth_l1_map = F.smooth_l1_loss(recon_image, target_image, reduction="none")
-        per_sample = smooth_l1_map.flatten(start_dim=1)
+    size = int(row_counts[0].item())
+    return top, left, size
 
-        if reduction == "sum":
-            return per_sample.sum(dim=1).mean()
 
-        return per_sample.mean(dim=1).mean()
+def _crop_batch_squares(image: pt.Tensor, top: pt.Tensor, left: pt.Tensor, size: int):
+    
+    B, C, H, W = image.shape
+    device = image.device
 
-    # compute smooth_l1 for masked regions only
-    smooth_l1_map = F.smooth_l1_loss(recon_image, target_image, reduction="none")
-    masked_smooth_l1 = smooth_l1_map * masked_region_map
+    row_offsets = pt.arange(size, device=device)
+    col_offsets = pt.arange(size, device=device)
 
-    per_sample_sum = masked_smooth_l1.flatten(start_dim=1).sum(dim=1)
+    row_idx = top[:, None] + row_offsets[None, :]    # (B, size)
+    col_idx = left[:, None] + col_offsets[None, :]   # (B, size)
+
+    cropped = image.gather(
+        dim=2,
+        index=row_idx[:, None, :, None].expand(B, C, size, W)
+    )
+    cropped = cropped.gather(
+        dim=3,
+        index=col_idx[:, None, None, :].expand(B, C, size, size)
+    )
+
+    return cropped
+
+
+def _smooth_l1_term(recon_image: pt.Tensor, target_image: pt.Tensor, reduction: str) -> pt.Tensor:
+    smooth_l1_map = F.smooth_l1_loss(
+        recon_image,
+        target_image,
+        reduction="none"
+    )
+    per_sample = smooth_l1_map.flatten(start_dim=1)
+
     if reduction == "sum":
-        return per_sample_sum.mean()
+        return per_sample.sum(dim=1).mean()
 
-    per_sample_count = masked_region_map.flatten(start_dim=1).sum(dim=1).clamp_min(1.0)
-    return (per_sample_sum / per_sample_count).mean()
+    return per_sample.mean(dim=1).mean()
 
 
-def _masked_ssim_term(recon_image: pt.Tensor, target_image: pt.Tensor, masked_region_map: Optional[pt.Tensor], reduction: str) -> pt.Tensor:
-    # compute ssim for the full images
-    if masked_region_map is None:
-        # SSIM uses data_range = max_element - min_element, so data_range = 1.0 since images are normalized to [0.0, 1.0]
-        ssim_score = structural_similarity_index_measure(recon_image, target_image, data_range=1.0, reduction="none")
-        # SSIM = higher is better, so (1.0 - SSIM) flips it to lower is better for loss convergence
-        return (1.0 - ssim_score).mean()
+def _ssim_loss_term(recon_image: pt.Tensor, target_image: pt.Tensor, **kwargs) -> pt.Tensor:
+    ssim_score = structural_similarity_index_measure(
+        recon_image,
+        target_image,
+        data_range=1.0,
+        reduction="none",
+    )
+    ssim_loss = 1.0 - ssim_score
 
-    # compute ssim for masked regions only
-    ssim_losses = []
-    for i in range(recon_image.shape[0]):
-        # sadly we cannot vectorize because the masks are randomly placed
-        # however, the loss computes over less pixels which makes up for the iterations
-        recon_region = _get_square_region(recon_image, masked_region_map, i)
-        target_region = _get_square_region(target_image, masked_region_map, i)
-
-        ssim_i = structural_similarity_index_measure(recon_region, target_region, data_range=1.0)
-        ssim_loss_i = 1.0 - ssim_i
-        ssim_losses.append(ssim_loss_i)
-
-    # always average over batches
-    return pt.stack(ssim_losses).mean()
-
+    return ssim_loss.mean()
 
 def masked_reconstruction_loss(recon_image: pt.Tensor, target_image: pt.Tensor, masked_region_map: Optional[pt.Tensor] = None, ssim_weight: float = 0.0, reduction: Optional[str] = "mean", return_objective_only: bool = False):
     """
@@ -97,16 +100,23 @@ def masked_reconstruction_loss(recon_image: pt.Tensor, target_image: pt.Tensor, 
         reduction = "mean"
 
     zero = recon_image.sum() * 0.0
+
+    recon_for_loss = recon_image
+    target_for_loss = target_image
+
     skip_mask = masked_region_map is None or pt.all(masked_region_map == 0.0)
-    region_mask = None if skip_mask else masked_region_map.expand_as(recon_image).to(recon_image.dtype)
+    if not skip_mask:
+        top, left, size = _get_coords_from_mask(masked_region_map)
+        recon_for_loss = _crop_batch_squares(recon_image, top, left, size)
+        target_for_loss = _crop_batch_squares(target_image, top, left, size)
 
     smooth_l1 = zero
     if ssim_weight < 1.0:
-        smooth_l1 = _masked_smooth_l1_term(recon_image, target_image, region_mask, reduction)
+        smooth_l1 = _smooth_l1_term(recon_for_loss, target_for_loss, reduction)
 
     ssim_loss = zero
     if ssim_weight > 0.0:
-        ssim_loss = _masked_ssim_term(recon_image, target_image, region_mask, reduction)
+        ssim_loss = _ssim_loss_term(recon_for_loss, target_for_loss)
 
     objective_loss = (1.0 - ssim_weight) * smooth_l1 + ssim_weight * ssim_loss
 

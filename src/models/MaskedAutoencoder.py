@@ -14,9 +14,9 @@ class MaskedAutoencoder(NN.Module):
         # Contributor: Leslie Horace
         # ==================================================
 
-        self.device = config.get('device', "cuda" if pt.cuda.is_available() else "cuda")
+        device = config.get('device', "cuda" if pt.cuda.is_available() else "cuda")
+        self.device = device if isinstance(device, pt.device) else pt.device(device)
         self.random_seed = config.get('random_seed', 42)
- 
 
         initial_seed = pt.initial_seed()
         if initial_seed != self.random_seed:
@@ -104,6 +104,10 @@ class MaskedAutoencoder(NN.Module):
         # ==================================================
 
         self.to(self.device)
+
+        if self.device.type == "cuda":
+            self.encoder.compile()
+            self.decoder.compile()
 
     def encode(self, x: pt.Tensor):
         """encodes (compresses) an input x to latent z
