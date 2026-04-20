@@ -19,7 +19,7 @@ except ImportError:
  
 # ==================================================
 # CONTRIBUTION START: HyperparameterSearch, main()
-# Contributor: Wen Yu
+# Contributor: Wen Yu (Helpers, internal helpers and HyperparameterSearch, stage 1-2, entry run and run stage)
 # ==================================================
  
 def process_args():
@@ -99,6 +99,7 @@ def process_args():
 
 # --------------------------------------------------
 # Helpers
+# Contributor: Wen Yu (Grid Search, Random Search, Log Neighbors)
 # --------------------------------------------------
  
 def _grid_combinations(param_grid: dict) -> list:
@@ -167,6 +168,7 @@ def _get_stage_grids(full_grid: dict, best_lr: float) -> dict:
  
 # --------------------------------------------------
 # HyperparameterSearch
+# Contributor: Wen Yu (HyperparameterSearch, stage 1,2 and 4, entry run and run stage)
 # --------------------------------------------------
 
 class HyperparameterSearch(ModelTrainer):
@@ -201,6 +203,7 @@ class HyperparameterSearch(ModelTrainer):
 
     # --------------------------------------------------
     # Skeleton methods from the original design
+    # Contributor: Wen Yu
     # --------------------------------------------------
     def make_trainer(self, config, trial_label: str = "") -> ModelTrainer:
         """Spin up a fresh ModelTrainer in its own sub-folder."""
@@ -253,7 +256,8 @@ class HyperparameterSearch(ModelTrainer):
         self.logger.info(f"[TUNING] Resumed best config from {path}")
 
     # --------------------------------------------------
-    # Internal helpers
+    # Internal helpers: build scalar config for a trial
+    # Contributor: Wen Yu
     # --------------------------------------------------
 
     def _scalar_config(self, overrides: dict) -> dict:
@@ -272,6 +276,7 @@ class HyperparameterSearch(ModelTrainer):
 
     # --------------------------------------------------
     # run_stage: generic grid search loop (Stages 1, 2, 4)
+    # Contributor: Wen Yu
     # --------------------------------------------------
  
     def run_stage(self, param_grid: dict, stage_name: str) -> tuple:
@@ -337,6 +342,7 @@ class HyperparameterSearch(ModelTrainer):
 
     # --------------------------------------------------
     # run: top-level entry point
+    # Contributor: Wen Yu
     # --------------------------------------------------
  
     def run(self, full_grid: dict, start_stage: int = 1, end_stage: int = 5):
@@ -453,11 +459,48 @@ if __name__ == "__main__":
 
 # make sure it works so far:
 """
-python src/tune_model.py \
---config-file configs/tune_config.json \
---input-folder "data/preprocessed/galaxiesml_tiny" \
---output-folder experiments/tune_model_stage1 \
---num-cores 2 \
---gpu-memory-fraction 0.9 \
---debug
+
+# -------------------------------------------------------
+# Usage examples
+# -------------------------------------------------------
+#
+# 1) Full run — all 5 stages:
+#   python src/tune_model.py \
+#       --config-file configs/tune_config.json \
+#       --input-folder "data/galaxiesml_tiny" \
+#       --output-folder experiments/tune_mask0.0 \
+#       --tune-epochs 30 \
+#       --final-epochs 300 \
+#       --arch-trials 30 \
+#       --num-cores 2 \
+#       --gpu-memory-fraction 0.9 \
+#       --debug
+#
+# 2) Only Stage 1 + 2 (tune loss + optimizer, no arch search or final train):
+#   python src/tune_model.py \
+#       --config-file configs/tune_config.json \
+#       --input-folder "data/galaxiesml_tiny" \
+#       --output-folder experiments/tune_mask0.0 \
+#       --tune-epochs 30 \
+#       --end-stage 2 \
+#       --num-cores 2 \
+#       --gpu-memory-fraction 0.9 \
+#       --debug
+#
+# 3) Resume from Stage 3 after running example 2:
+#   python src/tune_model.py \
+#       --config-file configs/tune_config.json \
+#       --input-folder "data/galaxiesml_tiny" \
+#       --output-folder experiments/tune_mask0.0 \
+#       --tune-epochs 30 \
+#       --final-epochs 300 \
+#       --arch-trials 30 \
+#       --start-stage 3 \
+#       --resume-config experiments/tune_mask0.0/tuning/best_config_after_stage2_optimizer.json \
+#       --num-cores 2 \
+#       --gpu-memory-fraction 0.9
+#
+# 4) Use Optuna for Stage 3:
+#   python src/tune_model.py ... --use-optuna --arch-trials 50
+ 
 """
