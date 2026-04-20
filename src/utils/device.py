@@ -1,5 +1,5 @@
-from src.utils.logger import get_logger
-from src.utils.common import os, pt, np, gc, random
+from utils.logger import get_logger
+from utils.common import os, pt, np, gc, random
 
 # ==================================================
 # CONTRIBUTION START: Deterministic SetupDevice Class

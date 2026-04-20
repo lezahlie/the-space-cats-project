@@ -1,7 +1,7 @@
 """
 Utilities commonly used anywhere such as python module, helper functions, file I/O for hdf5, json, yaml, csv, etc
 """
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 import os
 import sys
 import argparse

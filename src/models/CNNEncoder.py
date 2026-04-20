@@ -1,4 +1,4 @@
-from src.utils.common import pt, Optional
+from utils.common import pt, Optional
 NN = pt.nn
 F = NN.functional
 
