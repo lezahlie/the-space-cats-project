@@ -1,5 +1,5 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, copy, Path, pt, time, np, read_from_json, save_to_json, validate_tensor
+from src.utils.common import argparse, os, copy, Path, pt, time, np, gc, HDF5StackWriter, read_from_json, save_to_json, validate_tensor
 from src.utils.config import validate_config, merge_config
 from src.utils.device import SetupDevice
 from src.utils.viz import plot_image_samples, plot_learning_curves
@@ -99,7 +99,7 @@ class ModelTrainer:
         self.valid_loader = self.prepare_datasets.valid_dataloader
         self.test_loader = self.prepare_datasets.test_dataloader
         self.transform = self.prepare_datasets.transform
-
+        
         prep_metadata_path = self.input_folder / "preprocessing_metadata.json"
         prep_metadata = read_from_json(prep_metadata_path)
         self.config["input_shape"] = prep_metadata["dataset_sample_shapes"]["x_masked_image"]
@@ -244,22 +244,33 @@ class ModelTrainer:
 
         pt.save(checkpoint, self.checkpoints_dir / file_name)
 
-    def _copy_batch_samples(self, batch, y_recon, z_latent=None):
-        if batch is None:
-            return None
+    def load_model_checkpoint(self, file_name):
+        checkpoint_path = self.checkpoints_dir / file_name
+
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+        best_checkpoint = pt.load(checkpoint_path)
+        best_state = best_checkpoint["model_state_dict"]
+        self.mae_model.load_state_dict(best_state)
         
 
+    def _copy_batch_samples(self, batch, y_recon, z_latent, start=0, stop=None):
+        if batch is None:
+            return None
+
         batch_samples = {
-            "original_id": batch.original_id,
-            "masked_region_map": batch.masked_region_map.detach().cpu(),
-            "x_masked_image": batch.x_masked_image.detach().cpu(),
-            "y_target_image": batch.y_target_image.detach().cpu(),
-            "y_recon_image": y_recon.detach().cpu(),
-            "z_latent_vector": z_latent.detach().cpu() if z_latent is not None else None,
-            "y_specz_redshift": batch.y_specz_redshift.detach().cpu(),
+            "original_id": np.asarray(batch.original_id[start:stop]),
+            "masked_region_map": batch.masked_region_map[start:stop],
+            "x_masked_image": batch.x_masked_image[start:stop],
+            "y_target_image": batch.y_target_image[start:stop],
+            "y_recon_image": y_recon[start:stop],
+            "z_latent_vector": z_latent[start:stop],
+            "y_specz_redshift": batch.y_specz_redshift[start:stop],
         }
 
         return batch_samples
+    
 
     @pt.no_grad()
     def save_sample_plots(self, sample_data, split:str, inverse_transform=False, epoch=None):
@@ -297,11 +308,11 @@ class ModelTrainer:
         save_path = self.plots_dir / file_name
         plot_image_samples(
             original_id=[original_id[i] for i in sample_indices],
-            masked_map=masked_map[sample_indices],
-            x_masked=x_masked[sample_indices],
-            y_target=y_target[sample_indices],
-            y_recon=y_recon[sample_indices],
-            y_redshift=y_redshift[sample_indices],
+            masked_map= masked_map[sample_indices].detach().cpu().numpy(),
+            x_masked= x_masked[sample_indices].detach().cpu().numpy(),
+            y_target= y_target[sample_indices].detach().cpu().numpy(),
+            y_recon= y_recon[sample_indices].detach().cpu().numpy(),
+            y_redshift= y_redshift[sample_indices].detach().cpu().numpy(),
             save_path=save_path,
             figure_title=figure_title,
             band_names=("g", "r", "i", "z", "y"),
@@ -313,6 +324,62 @@ class ModelTrainer:
 
         self.logger.info(f"[{split}] saved {max_samples} sample plots to: {self.plots_dir}")
 
+
+    @pt.no_grad()
+    def export_model_outputs(self, model, loader, file_name: str, chunk_size=64):
+        model.eval()
+
+        save_path = self.samples_dir / file_name
+        writer = None
+        total_rows = 0
+        try:
+            for batch_idx, batch in enumerate(loader, start=1):
+                x_input = batch.x_masked_image.to(self.device, non_blocking=True)
+
+                z_latent = model.encode(x_input)
+                if self.config["debug"]:
+                    validate_tensor("z_latent", z_latent)
+
+                y_recon = model.decode(z_latent)
+                if self.config["debug"]:
+                    validate_tensor("y_recon", y_recon)
+
+                batch_size = x_input.shape[0]
+                sample_batch = self._copy_batch_samples(
+                    batch=batch,
+                    y_recon=y_recon,
+                    z_latent=z_latent,
+                )
+
+                if writer is None:
+                    writer = HDF5StackWriter(
+                        hdf5_path=save_path,
+                        chunk_rows=chunk_size,
+                        overwrite=True,
+                    )
+
+                writer.append(sample_batch)
+                total_rows += batch_size
+
+                del sample_batch, y_recon, z_latent, x_input
+
+                if self._should_log_batch(batch_idx, len(loader)):
+                    self.logger.info(f"[EXPORT]: Batch[{batch_idx}/{len(loader)}] saved_rows={total_rows}")
+
+            sample_batch = self._copy_batch_samples(
+                batch=batch,
+                y_recon=y_recon,
+                z_latent=z_latent,
+            )
+
+            self.save_sample_plots(sample_batch, file_name.split("_")[0], epoch="best")
+
+        finally:
+            if writer is not None:
+                writer.close()
+
+        self.logger.info(f"[EXPORT] saved {total_rows} rows to: {save_path}")
+        return save_path
 
     def save_result_metrics(self, test_metrics):
         history_path = self.metrics_dir / "model_history.json"
@@ -550,7 +617,7 @@ class ModelTrainer:
                 "best_valid_loss": self.best_valid_loss,
                 "best_test_metrics": best_test_metrics,
                 "history": self.history,
-            },
+            }
         )
 
         result_metadata = self.save_result_metrics(best_test_metrics)
@@ -560,6 +627,7 @@ class ModelTrainer:
             f"smooth_l1={best_test_metrics['smooth_l1']:.8f}, "
             f"ssim_loss={best_test_metrics['ssim_loss']:.8f}"
         )
+
         return result_metadata
 
 
@@ -592,6 +660,12 @@ def main(args):
     results = trainer.train_model()
 
     logger.info(results)
+
+    trainer.load_model_checkpoint("best_model.pth")
+
+    trainer.export_model_outputs(model=trainer.mae_model, loader=trainer.train_loader, file_name="training_outputs_best.hdf5")
+    trainer.export_model_outputs(model=trainer.mae_model, loader=trainer.valid_loader, file_name="validation_outputs_best.hdf5")
+    trainer.export_model_outputs(model=trainer.mae_model, loader=trainer.test_loader, file_name="testing_outputs_best.hdf5")
 
 
 # ==================================================

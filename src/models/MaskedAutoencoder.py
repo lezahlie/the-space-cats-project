@@ -1,8 +1,8 @@
 from src.utils.common import pt, AttrDict
 NN = pt.nn
 F = NN.functional
-from models.CNNEncoder import CNNEncoder
-from models.CNNDecoder import CNNDecoder
+from src.models.CNNEncoder import CNNEncoder
+from src.models.CNNDecoder import CNNDecoder
 
 
 class MaskedAutoencoder(NN.Module):
@@ -14,7 +14,8 @@ class MaskedAutoencoder(NN.Module):
         # Contributor: Leslie Horace
         # ==================================================
 
-        self.device = config.get('device', "cuda" if pt.cuda.is_available() else "mps" if pt.backends.mps.is_available() else "cpu")
+        device = config.get('device', "cuda" if pt.cuda.is_available() else "mps" if pt.backends.mps.is_available() else "cpu")
+        self.device = pt.device(device)
         self.random_seed = config.get('random_seed', 42)
 
         initial_seed = pt.initial_seed()

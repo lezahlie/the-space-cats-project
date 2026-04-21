@@ -10,5 +10,5 @@
 **/experiments/
 **/logs/
 **/temp/
-
+**/*.tar.gz
 !**/*.py

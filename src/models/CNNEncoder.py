@@ -201,9 +201,6 @@ class CNNEncoder(NN.Module):
         # ==================================================
 
 
-
-
-
 def test_main(args):
     from src.utils.device import SetupDevice
     from src.utils.logger import set_logger_level, get_logger

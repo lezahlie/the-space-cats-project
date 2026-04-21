@@ -302,6 +302,7 @@ class PrepareDatasets:
         logger = get_logger()
         out = self.output_folder
         pt.save(self, out / "prepare_datasets.pth")
+        pt.save(self.transform, out / "normalize_transform.pth")
 
         metadata = {
             "image_normalization": {

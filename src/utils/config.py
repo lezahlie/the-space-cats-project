@@ -7,7 +7,7 @@ from src.utils.common import copy, AttrDict
 
 DEFAULT_TRAIN_CONFIG = {
     "debug": False,
-    "image_shape": [5, 64, 64],
+    "input_shape": [5, 64, 64],
     "num_workers": 1,
     "random_seed": 42,
 

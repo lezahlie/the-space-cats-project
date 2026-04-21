@@ -31,9 +31,134 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 # ==================================================
 # CONTRIBUTION START: Lazy loader for GalaxiesMLDataset,
-# I/O helpers for json
+# I/O helpers for json, HDF5StackWriter
 # Contributor: Leslie Horace
 # ==================================================
+
+def _detach_tensor(value):
+    if isinstance(value, np.ndarray):
+        return value
+    if isinstance(value, pt.Tensor):
+        return value.detach().cpu().numpy()
+    arr = np.asarray(value)
+    return arr
+
+
+def _normalize_sample_array(arr, batched):
+    if batched:
+        if arr.ndim == 0:
+            return arr.reshape(1)
+        return arr
+
+    if arr.ndim == 0:
+        return arr.reshape(1)
+    return arr[None, ...]
+
+
+class HDF5StackWriter:
+    def __init__(
+        self,
+        hdf5_path,
+        chunk_rows=64,
+        compression=None,
+        compression_opts=None,
+        overwrite=False,
+        flush_every=0,
+    ):
+        mode = "w" if overwrite else "a"
+        self.file = h5py.File(hdf5_path, mode)
+        self.chunk_rows = chunk_rows
+        self.flush_every = flush_every
+        self.append_count = 0
+        self.compression = compression
+        self.compression_opts = compression_opts
+
+        self.datasets = {key: self.file[key] for key in self.file.keys()}
+
+    def _serialize_batch(self, batch_dict, batched=True):
+        out = {}
+        batch_size = None
+
+        for key, value in batch_dict.items():
+            arr = _detach_tensor(value)
+            arr = _normalize_sample_array(arr, batched=batched)
+
+            if arr.dtype.kind in {"U", "S", "O"}:
+                try:
+                    arr = arr.astype(np.int64)
+                except (ValueError, TypeError):
+                    try:
+                        arr = arr.astype(np.float32)
+                    except (ValueError, TypeError):
+                        raise TypeError(f"{key} has non-numeric dtype {arr.dtype}")
+
+            if batch_size is None:
+                batch_size = arr.shape[0]
+            elif arr.shape[0] != batch_size:
+                raise ValueError("All arrays must have same batch size")
+
+            out[key] = arr
+
+        return out
+
+    def _create_dataset(self, key, arr):
+        if arr.ndim == 0:
+            raise ValueError(f"{key} must have a batch dimension")
+
+        rows = max(1, arr.shape[0])
+        chunk_rows = min(self.chunk_rows, rows)
+
+        dset = self.file.create_dataset(
+            key,
+            data=arr,
+            maxshape=(None,) + arr.shape[1:],
+            chunks=(chunk_rows,) + arr.shape[1:],
+            compression=self.compression,
+            compression_opts=self.compression_opts,
+        )
+        self.datasets[key] = dset
+        
+    def append(self, batch_dict, batched=True):
+        batch_dict = self._serialize_batch(batch_dict, batched=batched)
+
+        if not self.datasets:
+            for key, arr in batch_dict.items():
+                self._create_dataset(key, arr)
+        else:
+            if set(batch_dict.keys()) != set(self.datasets.keys()):
+                raise ValueError("Batch keys do not match existing datasets")
+
+        for key, arr in batch_dict.items():
+            dset = self.datasets[key]
+
+            if dset.shape[1:] != arr.shape[1:]:
+                raise ValueError(
+                    f"Shape mismatch for {key}: got {arr.shape[1:]}, expected {dset.shape[1:]}"
+                )
+
+            start = dset.shape[0]
+            stop = start + arr.shape[0]
+            dset.resize((stop,) + dset.shape[1:])
+            dset[start:stop] = arr
+
+        self.append_count += 1
+        if self.flush_every > 0 and self.append_count % self.flush_every == 0:
+            self.file.flush()
+
+
+    def close(self):
+        if self.file is None:
+            return
+        self.file.flush()
+        self.file.close()
+        self.file = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
 
 class GalaxiesMLDataset(pt.utils.data.Dataset):
     def __init__(
@@ -45,6 +170,16 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
         target_transform=None,
         max_samples=None,
     ):
+        
+        """_summary_
+
+        Raises:
+            KeyError: _description_
+            KeyError: _description_
+            ValueError: _description_
+            KeyError: _description_
+            ValueError: _description_
+        """
         self.hdf5_path = str(hdf5_path)
         self.input_key = input_key
         self.target_key = target_key
