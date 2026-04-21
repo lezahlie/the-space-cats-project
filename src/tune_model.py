@@ -6,22 +6,14 @@ from preprocess_data import Normalize, PrepareDataset, PrepareDatasets
 
 import itertools
 import random
-import h5py
-import numpy as np
  
-try:
-    import optuna
-    from optuna.samplers import TPESampler
-    from optuna.pruners import MedianPruner
-    OPTUNA_AVAILABLE = True
-except ImportError:
-    OPTUNA_AVAILABLE = False
  
 # ==================================================
 # CONTRIBUTION START: HyperparameterSearch, main()
-# Contributor: Wen Yu (Helpers, internal helpers and HyperparameterSearch, stage 1-2, entry run and run stage)
+# Contributor: Wen Yu
 # ==================================================
  
+
 def process_args():
     parser = argparse.ArgumentParser(description="Tune Model Executable", formatter_class= argparse.RawTextHelpFormatter)
     parser.add_argument('--debug', '-d', dest='debug', action='store_true', 
@@ -47,15 +39,11 @@ def process_args():
     parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=30,
                 help="Number of epochs per trial during tuning stages | default: 30")
     parser.add_argument('--final-epochs', dest="final_epochs", type=int, default=200,
-                help="Number of epochs for Stage 5 full training | default: 200")
-    parser.add_argument('--arch-trials', dest="arch_trials", type=int, default=30,
-                help="Number of random/optuna trials for Stage 3 architecture search | default: 30")
-    parser.add_argument('--use-optuna', dest="use_optuna", action='store_true',
-                help="Use Optuna for Stage 3 architecture search (requires optuna) | default: Off")
+                help="Number of epochs for Stage 4 full training | default: 200")
     parser.add_argument('--start-stage', dest="start_stage", type=int, default=1,
-                help="Stage to start from (1-5), useful for resuming | default: 1")
-    parser.add_argument('--end-stage', dest="end_stage", type=int, default=5,
-                help="Stage to stop after (1-5), inclusive | default: 2")
+                help="Stage to start from (1-4), useful for resuming | default: 1")
+    parser.add_argument('--end-stage', dest="end_stage", type=int, default=4,
+                help="Stage to stop after (1-4), inclusive | default: 4")
     parser.add_argument('--resume-config', dest="resume_config", type=str, default=None,
                 help="Path to a best_config JSON to resume from a previous stage | default: None")
 
@@ -81,14 +69,15 @@ def process_args():
         raise ValueError("[--tune-epochs] must be >= 1")
     if not (1 <= args.final_epochs):
         raise ValueError("[--final-epochs] must be >= 1")
-    if not (1 <= args.arch_trials):
-        raise ValueError("[--arch-trials] must be >= 1")
-    if not (1 <= args.start_stage <= 5):
-        raise ValueError("[--start-stage] must be between 1 and 5")
-    if args.use_optuna and not OPTUNA_AVAILABLE:
-        raise ImportError("[--use-optuna] requires optuna: pip install optuna")
+    if not (1 <= args.start_stage <= 4):
+        raise ValueError("[--start-stage] must be between 1 and 4")
+    if not (1 <= args.end_stage <= 4):
+        raise ValueError("[--end-stage] must be between 1 and 4")
+    if args.start_stage > args.end_stage:
+        raise ValueError("[--start-stage] must be <= [--end-stage]")
     if args.resume_config is not None and not Path(args.resume_config).is_file():
         raise FileNotFoundError(f"[--resume-config] '{args.resume_config}' does not exist")
+ 
 
     """
     please validate the arguments you added so it breaks now instead of later
@@ -99,20 +88,13 @@ def process_args():
 
 # --------------------------------------------------
 # Helpers
-# Contributor: Wen Yu (Grid Search, Random Search, Log Neighbors)
+# Contributor: Wen Yu
 # --------------------------------------------------
  
 def _grid_combinations(param_grid: dict) -> list:
     """All combinations of a param_grid dict."""
     keys, values = list(param_grid.keys()), list(param_grid.values())
     return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
- 
- 
-def _random_sample(param_grid: dict, n: int, seed: int = 42) -> list:
-    """n random combinations (without replacement where possible)."""
-    rng = random.Random(seed)
-    all_combos = _grid_combinations(param_grid)
-    return rng.sample(all_combos, min(n, len(all_combos)))
  
  
 def _log_neighbors(best_val: float, candidates: list) -> list:
@@ -123,17 +105,17 @@ def _log_neighbors(best_val: float, candidates: list) -> list:
  
  
 
-
 # --------------------------------------------------
-# Stage definitions
-# Each entry: (stage_name, param_grid_keys_or_callable)
-# Stage 3 is handled separately (random/optuna, not plain grid search)
+# Stage grid definitions
+# NOTE: param ranges within each stage are TBD by @Leslie
+#       to ensure all mask_ratio ablations are comparable.
+#       Update this function once finalizes the grids.
 # --------------------------------------------------
  
 def _get_stage_grids(full_grid: dict, best_lr: float) -> dict:
     """
     Returns the param_grid for each stage as a dict keyed by stage number.
-    Stage 3 is None here — handled separately via random/optuna.
+    Stage 4 uses fine-tuned lr neighbors around the best lr from Stage 2.
     """
     fine_lr = _log_neighbors(best_lr, list(full_grid["learn_rate"]))
     return {
@@ -147,7 +129,7 @@ def _get_stage_grids(full_grid: dict, best_lr: float) -> dict:
             "optim_beta2":  full_grid["optim_beta2"],
             "batch_size":   full_grid["batch_size"],
         },
-        3: {   # architecture — used only by random/optuna, not run_stage()
+        3: {   # architecture — grid search, params TBD by Leslie
             "hidden_layers":       full_grid["hidden_layers"],
             "hidden_dims":         full_grid["hidden_dims"],
             "latent_dims":         full_grid["latent_dims"],
@@ -173,7 +155,7 @@ def _get_stage_grids(full_grid: dict, best_lr: float) -> dict:
 
 class HyperparameterSearch(ModelTrainer):
     def __init__(self, config, input_folder, output_folder, device,
-                 tune_epochs, final_epochs, arch_trials, use_optuna, random_seed):
+                 tune_epochs, final_epochs, random_seed):
         """Tunes the model with staged grid search (+ random/Optuna for architecture).
 
         Stage 1: Loss function     – ssim_loss_weight
@@ -182,15 +164,13 @@ class HyperparameterSearch(ModelTrainer):
                                      norm_layer, conv_kernel, ascending_channels
                                      (random search or Optuna TPE)
         Stage 4: LR Scheduler      – scheduler type + params, fine-tune lr neighbors
-        Stage 5: Full Training     – train from scratch with best config + more epochs,
-                                     save train/valid/test outputs to HDF5
+        After all stages, best_overall_config.json is saved and can be passed
+        directly into train_model.py for full training.
         """
         super().__init__(config, input_folder, output_folder, device)
 
         self.tune_epochs  = tune_epochs
         self.final_epochs = final_epochs
-        self.arch_trials  = arch_trials
-        self.use_optuna   = use_optuna
         self.random_seed  = random_seed
 
         self.base_config         = dict(self.config)
@@ -201,15 +181,16 @@ class HyperparameterSearch(ModelTrainer):
         self.tuning_dir = Path(output_folder) / "tuning"
         self.tuning_dir.mkdir(parents=True, exist_ok=True)
 
+
     # --------------------------------------------------
     # Skeleton methods from the original design
     # Contributor: Wen Yu
     # --------------------------------------------------
+
     def make_trainer(self, config, trial_label: str = "") -> ModelTrainer:
         """Spin up a fresh ModelTrainer in its own sub-folder."""
         trial_output = self.tuning_dir / trial_label.replace(" ", "_").replace("/", "-")
         trial_output.mkdir(parents=True, exist_ok=True)
-
         return ModelTrainer(
             config=config,
             input_folder=self.input_folder,
@@ -281,10 +262,8 @@ class HyperparameterSearch(ModelTrainer):
  
     def run_stage(self, param_grid: dict, stage_name: str) -> tuple:
         """
-        Generic stage runner: grid-search over param_grid, return
-        (best_params, best_loss).
-
-        Each combination is run via make_trainer() + train_model().
+        Grid search over param_grid. Each combo gets a fresh ModelTrainer
+        runs via make_trainer() + train_model(). Returns (best_params, best_loss).
         """
         combos     = _grid_combinations(param_grid)
         best_loss  = float("inf")
@@ -311,36 +290,6 @@ class HyperparameterSearch(ModelTrainer):
 
 
     # --------------------------------------------------
-    # Stage 3 only: random search or Optuna
-    # --------------------------------------------------
-    def _run_stage3(self, arch_grid: dict) -> tuple:
-        """
-        Random or Optuna search for architecture params. 
-        Returns (best_params, best_loss).
-        """
-        return NotImplemented   
-
-    # --------------------------------------------------
-    # Stage 5: full retraining + save HDF5 outputs
-    # --------------------------------------------------
-    def _run_stage5(self):
-        """
-        Retrain from scratch with best config + final_epochs, then save outputs.
-        """
-        return NotImplemented  
-
-
-    # --------------------------------------------------
-    # Stage 5: full retraining + save HDF5 outputs
-    # --------------------------------------------------
- 
-    def _run_stage5(self):
-        """
-        Retrain from scratch with best config + final_epochs, then save outputs.
-        """
-        return NotImplemented  
-
-    # --------------------------------------------------
     # run: top-level entry point
     # Contributor: Wen Yu
     # --------------------------------------------------
@@ -348,27 +297,29 @@ class HyperparameterSearch(ModelTrainer):
     def run(self, full_grid: dict, start_stage: int = 1, end_stage: int = 5):
         """
         Run stages start_stage..end_stage (inclusive).
- 
-        Stages 1, 2, 4  → generic run_stage() grid search
-        Stage  3        → random search or Optuna (_run_stage3)
-        Stage  5        → full retrain + HDF5 output (_run_stage5)
+        Use --start-stage > 1 with --resume-config to resume from a checkpoint.
+        Use --end-stage < 4 to stop early (e.g. end_stage=2 for loss + optimizer only).
+
+        After all stages complete, best_overall_config.json is saved —
+        pass this directly into train_model.py for full training.
         """
-        stage_names = {1: "stage1_loss", 2: "stage2_optimizer",
-                       3: "stage3_architecture", 4: "stage4_scheduler"}
+        stage_names = {
+            1: "stage1_loss", 
+            2: "stage2_optimizer",
+            3: "stage3_architecture", 
+            4: "stage4_scheduler"
+            }
  
         # build per-stage grids (Stage 4 needs best_lr from Stage 2)
         best_lr    = self.best_stage_config.get("learn_rate", full_grid["learn_rate"][0])
         stage_grids = _get_stage_grids(full_grid, best_lr)
  
-        for stage in range(start_stage, min(end_stage, 4) + 1):
+        for stage in range(start_stage, end_stage + 1):
             self.logger.info("=" * 60)
             self.logger.info(f"STAGE {stage}: {stage_names[stage].upper()}")
             self.logger.info("=" * 60)
  
-            if stage == 3:
-                best_params, best_loss = self._run_stage3(stage_grids[3])
-            else:
-                best_params, best_loss = self.run_stage(stage_grids[stage], stage_names[stage])
+            best_params, best_loss = self.run_stage(stage_grids[stage], stage_names[stage])
  
             # recompute stage 4 grid now that we have the real best_lr from stage 2
             if stage == 2:
@@ -379,28 +330,25 @@ class HyperparameterSearch(ModelTrainer):
             self.update_best_configs(best_params, best_loss)
             self.save_best_so_far(stage_names[stage])
  
-        if start_stage <= 5 <= end_stage:
-            self.logger.info("=" * 60)
-            self.logger.info("STAGE 5: FULL TRAINING")
-            self.logger.info("=" * 60)
-            self._run_stage5()
- 
-        save_to_json(
-            Path(self.output_folder) / "best_overall_config.json",
-            self.best_overall_config,
-        )
-        self.logger.info(
-            f"[TUNING] Complete. Global best loss = {self.best_overall_loss:.8f}"
-        )
+        # save final best config — feed this into train_model.py for full training
+        best_overall_path = Path(self.output_folder) / "best_overall_config.json"
+        save_to_json(best_overall_path, self.best_overall_config)
+        self.logger.info(f"[TUNING] Complete. Global best loss = {self.best_overall_loss:.8f}")
+        self.logger.info(f"[TUNING] Best config saved -> {best_overall_path}")
+        self.logger.info(f"[TUNING] Run train_model.py with this config for full training.")
  
  
+# ==================================================
+# CONTRIBUTION END: HyperparameterSearch
+# ==================================================
+ 
+
 @log_execution_time
 def main(args):
     if args.debug:
         set_logger_level(10)
 
     logger = get_logger()
-
     device = SetupDevice.setup_torch_device(
         args.num_cores,
         args.cpu_device_only,
@@ -420,7 +368,6 @@ def main(args):
         "debug":       args.debug,
         "num_workers": args.num_cores,
         "random_seed": args.random_seed,
-        "device":      device,   
         "num_epochs":  args.tune_epochs,
     })
 
@@ -432,8 +379,6 @@ def main(args):
         device        = device,
         tune_epochs   = args.tune_epochs,
         final_epochs  = args.final_epochs,
-        arch_trials   = args.arch_trials,
-        use_optuna    = args.use_optuna,
         random_seed   = args.random_seed,
     )
 
@@ -442,12 +387,9 @@ def main(args):
  
     search.run(full_grid, start_stage=args.start_stage, end_stage=args.end_stage)
 
-    """
-    please implement the rest, you can change whatever you want
-    """
 
 if __name__ == "__main__":
-    from utils.logger import init_shared_logger
+    from src.utils.logger import init_shared_logger
     logger = init_shared_logger(__file__, log_stdout=True, log_stderr=True)
     try:
         pt.multiprocessing.set_sharing_strategy('file_system')
@@ -456,27 +398,23 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(e)
 
-
-# make sure it works so far:
 """
-
 # -------------------------------------------------------
 # Usage examples
 # -------------------------------------------------------
 #
-# 1) Full run — all 5 stages:
+# 1) Full run — all 4 stages:
 #   python src/tune_model.py \
 #       --config-file configs/tune_config.json \
 #       --input-folder "data/galaxiesml_tiny" \
 #       --output-folder experiments/tune_mask0.0 \
 #       --tune-epochs 30 \
 #       --final-epochs 300 \
-#       --arch-trials 30 \
 #       --num-cores 2 \
 #       --gpu-memory-fraction 0.9 \
 #       --debug
 #
-# 2) Only Stage 1 + 2 (tune loss + optimizer, no arch search or final train):
+# 2) Only Stage 1 + 2 (tune loss + optimizer only):
 #   python src/tune_model.py \
 #       --config-file configs/tune_config.json \
 #       --input-folder "data/galaxiesml_tiny" \
@@ -490,17 +428,14 @@ if __name__ == "__main__":
 # 3) Resume from Stage 3 after running example 2:
 #   python src/tune_model.py \
 #       --config-file configs/tune_config.json \
-#       --input-folder "data/galaxiesml_tiny" \
+#       --input-folder "data/preprocessed/galaxiesml_tiny" \
 #       --output-folder experiments/tune_mask0.0 \
 #       --tune-epochs 30 \
-#       --final-epochs 300 \
-#       --arch-trials 30 \
 #       --start-stage 3 \
 #       --resume-config experiments/tune_mask0.0/tuning/best_config_after_stage2_optimizer.json \
 #       --num-cores 2 \
 #       --gpu-memory-fraction 0.9
 #
-# 4) Use Optuna for Stage 3:
-#   python src/tune_model.py ... --use-optuna --arch-trials 50
+
  
 """
