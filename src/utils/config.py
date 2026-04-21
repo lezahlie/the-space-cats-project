@@ -1,7 +1,7 @@
 """
 Utilities for parsing yaml and/or json configs 
 """
-from utils.common import copy, AttrDict
+from src.utils.common import copy, AttrDict
 
 
 

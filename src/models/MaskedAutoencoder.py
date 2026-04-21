@@ -1,4 +1,4 @@
-from utils.common import pt, AttrDict
+from src.utils.common import pt, AttrDict
 NN = pt.nn
 F = NN.functional
 from models.CNNEncoder import CNNEncoder

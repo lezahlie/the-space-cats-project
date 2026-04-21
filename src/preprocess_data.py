@@ -1,5 +1,5 @@
-from utils.logger import get_logger, set_logger_level, log_execution_time
-from utils.common import argparse, os, Path, pt, h5py, np, random, json, GalaxiesMLDataset, AttrDict
+from src.utils.logger import get_logger, set_logger_level, log_execution_time
+from src.utils.common import argparse, os, Path, pt, h5py, np, random, json, GalaxiesMLDataset, AttrDict
 
 
 def process_args():

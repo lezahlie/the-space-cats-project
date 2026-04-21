@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-from utils.common import Path, np
+from src.utils.common import Path, np
 
 # ==================================================
 # CONTRIBUTION START: Sampled Images and Learning Curves

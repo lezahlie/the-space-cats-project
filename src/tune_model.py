@@ -1,8 +1,8 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
 from src.utils.common import argparse, os, copy, Path, pt, time, np, read_from_json, save_to_json, validate_tensor
 from src.utils.device import SetupDevice
-from train_model import ModelTrainer
-from preprocess_data import Normalize, PrepareDataset, PrepareDatasets
+from src.train_model import ModelTrainer
+from src.preprocess_data import Normalize, PrepareDataset, PrepareDatasets
 
 import itertools
 import random
@@ -447,7 +447,7 @@ def main(args):
     """
 
 if __name__ == "__main__":
-    from utils.logger import init_shared_logger
+    from src.utils.logger import init_shared_logger
     logger = init_shared_logger(__file__, log_stdout=True, log_stderr=True)
     try:
         pt.multiprocessing.set_sharing_strategy('file_system')
