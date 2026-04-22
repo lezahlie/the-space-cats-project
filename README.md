@@ -332,7 +332,7 @@ Dataset download page: https://zenodo.org/records/11117528
 2. Each trial runs for at most 50 epochs
 3. A trial stops early if either of these happens:
    - its validation loss does not improve for 5 consecutive epochs, or
-   - it does not beat the current best validation loss within 5 epochs of the best trial's best epoch
+   - it does not beat the current best validation loss within 10 epochs of the best trial's best epoch
 
 ```bash
 python src/tune_model.py \

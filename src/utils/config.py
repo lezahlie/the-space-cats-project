@@ -5,7 +5,7 @@ from src.utils.common import copy, AttrDict
 
 
 DEFAULT_CONFIG = {
-    "num_epochs": 200,
+    "num_epochs": 500,
 
     # loss
     "ssim_loss_weight": 0.0,

@@ -39,8 +39,8 @@ def process_args():
     # --- tuning-specific arguments ---
     parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=50,
                 help="Number of epochs to run per tuning trial | default: 50")
-    parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=5,
-                help="Minimum number of epochs to wait to see if a trial is better than than the previous trials best epoch | default: 5")
+    parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=10,
+                help="Minimum number of epochs to wait to see if a trial is better than than the previous trials best epoch | default: 10")
     parser.add_argument('--config-file', dest="config_file", type=str,
                 help="Input config file path to override base tuning config with | default: None")
     
@@ -220,7 +220,7 @@ def get_stage_grids(best_config: dict) -> dict:
 # --------------------------------------------------
 
 class HyperparameterSearch(ModelTrainer):
-    def __init__(self, config, input_folder, output_folder, device, tune_epochs=20, epoch_patience=4):
+    def __init__(self, config, input_folder, output_folder, device, tune_epochs=50, epoch_patience=10):
         """Tunes the model with staged grid search
         To save time, we prune (early stop) trials when the loss is not any better
         than the current best at the same number of epochs
@@ -443,7 +443,7 @@ class HyperparameterSearch(ModelTrainer):
         combined_df.to_csv(csv_path, index=False)
 
 
-    def _run_trial_with_pruning(self, trainer: ModelTrainer):
+    def _run_trial_with_pruning(self, trainer: ModelTrainer, current_best_loss: float, current_best_epoch: int):
         trainer.mae_model = trainer.mae_model.to(trainer.device)
 
         for epoch in range(1, trainer.config["num_epochs"] + 1):
@@ -454,10 +454,10 @@ class HyperparameterSearch(ModelTrainer):
             trainer.scheduler_step(valid_loss)
             trainer.check_improvement(valid_loss, epoch)
 
-            if np.isfinite(self.best_overall_loss) and self.best_overall_epoch > 0:
-                prune_epoch = self.best_overall_epoch + self.epoch_patience
+            if np.isfinite(current_best_loss) and current_best_epoch > 0:
+                prune_epoch = current_best_epoch + self.epoch_patience
 
-                if epoch >= prune_epoch and trainer.best_valid_loss >= self.best_overall_loss:
+                if epoch >= prune_epoch and trainer.best_valid_loss >= current_best_loss:
                     return trainer.best_valid_loss, trainer.best_model_epoch, True
 
             if trainer._should_earlystop():
@@ -470,45 +470,43 @@ class HyperparameterSearch(ModelTrainer):
     # ==================================================
 
     # --------------------------------------------------
-    # run_trials: generic grid search loop (Stages 1, 2, 4)
-    # Contributor: Wen Yu
+    # run_trials: generic grid search loop with state tracking
+    # Contributor: Wen Yu, Leslie Horace (Tested + Extended)
     # --------------------------------------------------
 
     def run_stage(self, stage_id: int, param_grid: dict, stage_name: str) -> tuple:
         combos = _grid_combinations(param_grid)
         completed, best_loss, best_params, best_trial_id, best_so_far_epoch = self._existing_stage_state(stage_name)
-        
-        self.logger.info(f"[{stage_name}] stage_trials={len(combos)} already_complete={len(completed)}")
 
-        if completed:
-            self.logger.info(
-                f"[{stage_name}] found_existing_complete_trials={len(completed)} "
-                f"recovered_best_trial={best_trial_id or 'none'} "
-                f"recovered_best_loss={best_loss:.8f}"
-            )
-        else:
-            self.logger.info(f"[{stage_name}] found_existing_complete_trials=0")
+        running_best_loss = self.best_overall_loss
+        running_best_epoch = self.best_overall_epoch
+
+        if np.isfinite(best_loss) and (
+            not np.isfinite(running_best_loss) or best_loss < running_best_loss):
+            running_best_loss = best_loss
+            running_best_epoch = best_so_far_epoch
 
         for i, params in enumerate(combos, 1):
             trial_id = f"{i:04d}"
             hyper_params = self._get_hyper_params(params)
 
             if hyper_params in completed:
-                self.logger.info(f"[{stage_name}] trial={trial_id} status=skipped reason=already_complete")
                 continue
 
             cfg = self._scalar_config(params)
             label = f"{stage_name}_trial_{trial_id}"
 
-            config_path = ""
-            status = "complete"
             error_message = ""
+            config_path = ""
 
             try:
                 trainer = self.make_trainer(cfg, label)
-                config_path = str((Path(trainer.output_folder) / "resolved_train_config.json").resolve())
 
-                loss, best_epoch, pruned = self._run_trial_with_pruning(trainer=trainer)
+                loss, best_epoch, pruned = self._run_trial_with_pruning(
+                    trainer=trainer,
+                    current_best_loss=running_best_loss,
+                    current_best_epoch=running_best_epoch,
+                )
                 status = "pruned" if pruned else "complete"
 
             except Exception as exc:
@@ -516,13 +514,16 @@ class HyperparameterSearch(ModelTrainer):
                 best_epoch = 0
                 status = "failed"
                 error_message = str(exc)
-                self.logger.warning(f"[{stage_name}] trial={trial_id} failed={exc}")
 
             if np.isfinite(loss) and loss < best_loss:
                 best_loss = loss
                 best_params = params
                 best_trial_id = trial_id
                 best_so_far_epoch = best_epoch
+
+            if np.isfinite(loss) and loss < running_best_loss:
+                running_best_loss = loss
+                running_best_epoch = best_epoch
 
             self._append_stage_result(
                 stage_name,
@@ -548,9 +549,10 @@ class HyperparameterSearch(ModelTrainer):
             )
 
         return best_params, best_loss, best_trial_id, best_so_far_epoch
+
     # --------------------------------------------------
-    # run: top-level entry point
-    # Contributor: Wen Yu
+    # run: top-level entry point with auto state tracking
+    # Contributor: Wen Yu, Leslie Horace (Tested + Extended)
     # --------------------------------------------------
         
     def tune_model(self):
