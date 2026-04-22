@@ -250,72 +250,71 @@ Dataset download page: https://zenodo.org/records/11117528
 
 1. Download `galaxiesml_tiny.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQB9Tz4RzNToRp4_vzHCXsY4AW4oPO2cBqAouYW8iNh3jsI?e=lv9BOT
 
-  Extract it to the data folder
+    Extract it to the data folder
 
-  ```bash
-  cd "/path/to/the-space-cats-project"
+    ```bash
+    cd "/path/to/the-space-cats-project"
 
-  mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
-  ```
+    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+    ```
 
 2. Test preprocessing works
 
-```bash
-python src/preprocess_data.py \
---input-folder data/galaxiesml_tiny \
---output-folder data/preprocessed \
---num-cores 2 \
---mask-ratio 0.5 \
---debug
-```
+    ```bash
+    python src/preprocess_data.py \
+    --input-folder data/galaxiesml_tiny \
+    --output-folder data/preprocessed \
+    --num-cores 2 \
+    --mask-ratio 0.5 \
+    --debug
+    ```
 
 3. Test tuning works
 
-```bash
-python src/tune_model.py \
---input-folder "data/preprocessed/galaxiesml_tiny" \
---output-folder experiments/tune_debug_grid \
---num-cores {NUM_CORES} \
---gpu-memory-fraction 0.9 \
---debug
-```
+    ```bash
+    python src/tune_model.py \
+    --input-folder "data/preprocessed/galaxiesml_tiny" \
+    --output-folder experiments/tune_debug_grid \
+    --gpu-memory-fraction 0.9 \
+    --num-cores {NUM_CORES} \
+    --debug
+    ```
 
 4. Test training works
 
-```bash
-python src/train_model.py \
---config-file configs/train_config.json \
---input-folder data/preprocessed/galaxiesml_tiny \
---output-folder experiments/train_galaxiesml_tiny \
---gpu-memory-fraction 0.5 \
---num-cores {NUM_CORES} \
---disable-deterministic \
---debug
-```
+    ```bash
+    python src/train_model.py \
+    --config-file configs/train_config.json \
+    --input-folder data/preprocessed/galaxiesml_tiny \
+    --output-folder experiments/train_galaxiesml_tiny \
+    --gpu-memory-fraction 0.9 \
+    --num-cores {NUM_CORES} \
+    --debug
+    ```
 
-> Note: Disabling deterministic due to a unsupported pytorch operation. Should work fine for tuning though.
+5. If you got to this point then you are ready to start tuning!
 
-5. If you got to this point then your ready to start tuning and be aware that it make take several days.
+> Please keep in mind this may take several days to complete
 
 ### D. Run Preprocessing
 
 1. Download `galaxiesml_medium.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQArE7VrCfj2Sqpwv9jNly0JARb2qsCnRMXKgiz8BAt0x-I?e=5ydyFl
 
-2. Extract it to the data folder
+    Extract it to the data folder
 
-  ```bash
-  cd "/path/to/the-space-cats-project"
+    ```bash
+    cd "/path/to/the-space-cats-project"
 
-  mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
-  ```
+    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+    ```
 
-3. Preprocess with your assigned mask ratio 
+2. Preprocess with your assigned mask ratio 
 
     ```bash
     python src/preprocess_data.py \
     --input-folder data/galaxiesml_medium \
     --output-folder data/preprocessed \
-    --num-cores 2 \
+    --num-cores <num_cores> \
     --mask-ratio <mask_ratio>
     ```
     
@@ -327,6 +326,8 @@ python src/train_model.py \
 
 ### E. Tune the model 
 
+### Note: If tuning is interrupted, simply restart from scratch. `tune_model.py` autodetects and skips completed trials from CSV logs.
+
 ```bash
 python src/tune_model.py \
 --input-folder "data/preprocessed/galaxiesml_medium" \
@@ -334,7 +335,7 @@ python src/tune_model.py \
 --gpu-memory-fraction 0.9 \
 --num-cores <num_cores>
 ```
-> - If you pass `--debug` it will run a small test grid instead of the real grids
+> - Do not pass `--debug` or it will NOT run the full tuning grid
 > - Replace `<your_name>` and `<mask_ratio>` in `[--output-folder]` in case we need to share our results
 > - Replace `<num_cores>` with `2` to `5` cores, where `5` is preferred for speed
 > - For system requirements refer to [A. Prerequisites](#step-2-masked-autoencoder-experiments-a-prerequisites)
@@ -344,27 +345,25 @@ python src/tune_model.py \
 
 1. Copy the best overall config from tuning to the configs folder
 
-```bash
-cp -p "experiments/tune_mae_<first_name>_<mask_ratio>/best_overall_config.json" "configs/best_config_<first_name>_<mask_ratio>.json"
-```
-> Please put your <first_name> and <mask_ratio> and commit the new config to github
+    ```bash
+    cp -p "experiments/tune_mae_<first_name>_<mask_ratio>/best_overall_config.json" "configs/best_config_<first_name>_<mask_ratio>.json"
+    ```
+    > Please put your <first_name> and <mask_ratio> and commit the new config to github
 
 2. Train the model with the best params one more time to obtain results for analysis
 
-```bash
-python src/train_model.py \
---config-file "configs/best_config_<first_name>_<mask_ratio>.json" \
---input-folder "data/preprocessed/galaxiesml_medium" \
---output-folder "experiments/train_mae_<first_name>_<mask_ratio>" \
---gpu-memory-fraction 0.9 \
---num-cores <num_cores> \
---disable-deterministic
-```
+    ```bash
+    python src/train_model.py \
+    --config-file "configs/best_config_<first_name>_<mask_ratio>.json" \
+    --input-folder "data/preprocessed/galaxiesml_medium" \
+    --output-folder "experiments/train_mae_<first_name>_<mask_ratio>" \
+    --gpu-memory-fraction 0.9 \
+    --num-cores <num_cores>
+    ```
 
-> Notes
-> - This will run for more epochs with early stopping
-> - Save outputs for downstream regression and analysis
-
+    > Notes
+    > - This will run for more epochs with early stopping
+    > - Save outputs for downstream regression and analysis
 
 ### G. Handling downstream predictions
 

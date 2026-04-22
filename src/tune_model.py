@@ -33,8 +33,8 @@ def process_args():
                 help="PyTorch device can only use default CPU; Overrides other device options | default: Off")
     parser.add_argument('--num-cores', dest="num_cores", type=int, default=1, 
                 help="Number of cpu cores (tasks) to run in parallel. If multi-threading is enabled, max threads is set to (num_tasks * 2) | default: 1")
-    parser.add_argument('--disable-deterministic',  dest='disable_deterministic', action='store_false', 
-            help="Disables deterministic algorithms, trades reproducibility for faster torch ops | default: False")
+    parser.add_argument('--deterministic',  dest='deterministic', action='store_true', 
+                help="Enables deterministic algorithms, trades reproducibility for faster torch ops and sometimes causes errors | default: True")
     
     # --- tuning-specific arguments ---
     parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=20,
@@ -579,8 +579,10 @@ def main(args):
         gpu_list=args.gpu_device_list,
         gpu_memory=args.gpu_memory_fraction,
         random_seed=args.random_seed,
-        deterministic=args.disable_deterministic
+        deterministic=args.deterministic
     )
+
+    logger.info(f"Using device = {device}")
 
     override_config = {}
     if args.config_file is not None:

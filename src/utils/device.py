@@ -105,10 +105,9 @@ class SetupDevice:
         if pt.cuda.is_available():
             pt.cuda.manual_seed(seed)
             pt.cuda.manual_seed_all(seed)
-            
+            pt.backends.cudnn.benchmark = not deterministic
+            pt.backends.cudnn.deterministic = deterministic
 
-        pt.backends.cudnn.benchmark = not deterministic
-        pt.backends.cudnn.deterministic = deterministic
         pt.use_deterministic_algorithms(deterministic)
 
 
