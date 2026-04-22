@@ -262,8 +262,8 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/preprocess_data.py \
-    --input-folder data/galaxiesml_tiny \
-    --output-folder data/preprocessed \
+    --input-folder "data/galaxiesml_tiny" \
+    --output-folder "data/preprocessed" \
     --num-cores 2 \
     --mask-ratio 0.5 \
     --debug
@@ -274,7 +274,7 @@ Dataset download page: https://zenodo.org/records/11117528
     ```bash
     python src/tune_model.py \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
-    --output-folder experiments/tune_debug_grid \
+    --output-folder "experiments/tune_debug_grid" \
     --gpu-memory-fraction 0.9 \
     --num-cores <num_cores> \
     --debug
@@ -284,9 +284,9 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/train_model.py \
-    --config-file configs/train_config.json \
-    --input-folder data/preprocessed/galaxiesml_tiny \
-    --output-folder experiments/train_galaxiesml_tiny \
+    --config-file "configs/train_config.json" \
+    --input-folder "data/preprocessed/galaxiesml_tiny" \
+    --output-folder "experiments/train_galaxiesml_tiny" \
     --gpu-memory-fraction 0.9 \
     --num-cores <num_cores> \
     --debug
@@ -312,8 +312,8 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/preprocess_data.py \
-    --input-folder data/galaxiesml_medium \
-    --output-folder data/preprocessed \
+    --input-folder "data/galaxiesml_medium" \
+    --output-folder "data/preprocessed" \
     --num-cores <num_cores> \
     --mask-ratio <mask_ratio>
     ```
