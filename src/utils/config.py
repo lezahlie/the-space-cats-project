@@ -121,7 +121,7 @@ def validate_config(config):
 
     # optim_type
     config["optim_type"] = str(config["optim_type"]).lower().strip()
-    valid_optimizers = {"adamw"}
+    valid_optimizers = {"adam", "adamw"}
     if config["optim_type"] not in valid_optimizers:
         raise ValueError(
             f"optim_type must be one of {sorted(valid_optimizers)}, "

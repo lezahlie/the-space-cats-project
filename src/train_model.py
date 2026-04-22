@@ -126,14 +126,6 @@ class ModelTrainer:
 
         self._should_earlystop = lambda: self.earlystop and (self.not_improved_epochs >= self.patience)
 
-        self._should_run_testing = lambda epoch, run_first=False, run_last=False: (
-            self.config["testing_epoch_frequency"] > 0 and (
-                (run_first and epoch == 1)
-                or (run_last and epoch == self.config["num_epochs"])
-                or (epoch % self.config["testing_epoch_frequency"] == 0)
-            )
-        )
-
         self._should_log_batch = lambda batch_idx, total_batches: (
             self.config["log_batch_frequency"] > 0 and (
                 batch_idx == 1

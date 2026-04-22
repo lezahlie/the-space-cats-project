@@ -391,7 +391,8 @@ class HyperparameterSearch(ModelTrainer):
             hyper_params = row.get("hyper_params", "")
             status = str(row.get("status", "")).strip().lower()
 
-            if pd.notna(hyper_params) and hyper_params != "" and status in {"complete", "ok"}:
+            # include pruned here
+            if pd.notna(hyper_params) and hyper_params != "" and status in {"complete", "ok", "pruned"}:
                 completed[str(hyper_params)] = row
 
             loss_value = row.get("loss_value", "inf")
@@ -553,10 +554,16 @@ class HyperparameterSearch(ModelTrainer):
     # --------------------------------------------------
         
     def tune_model(self):
-        self.load_resume_state()
+        state = self.load_resume_state()
         stage_defs = get_stage_grids(self.best_stage_config)
         stage_ids = [s for s in sorted(stage_defs.keys())]
 
+        start_idx = 0
+        if state is not None:
+            last_completed = state.get("last_completed_stage_id")
+            if isinstance(last_completed, int):
+                stage_ids = [s for s in stage_ids if s > last_completed]
+    
         for stage_id in stage_ids:
             stage_defs = get_stage_grids(self.best_stage_config)
             stage_name = stage_defs[stage_id]["name"]
