@@ -361,8 +361,8 @@ test_data = GalaxiesMLDataset(test_path, input_key = "z_latent_vector", target_k
      - Output: `y_recon_image` 
      - Target: `y_target_image` 
    - Experiments: 
-     - `MAE-Baseline`: $\text{mask\_ratio} = 0.0$
-     - `MAE-Ablation`: $\text{mask\_ratio} \in \{0.0, 0.25, 0.5, 0.75\}$
+     - `MAE-Baseline`: mask_ratio $ = 0.0$
+     - `MAE-Ablation`: mask_ratio $\in \{0.0, 0.25, 0.5, 0.75\}$
    - Analysis:
      - (REQUIRED) Testing set: KDE plots for reconstruction error
      - (REQUIRED) Training/validation set: learning curves for loss vs epochs
