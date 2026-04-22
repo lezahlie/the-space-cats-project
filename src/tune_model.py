@@ -37,15 +37,10 @@ def process_args():
                 help="Enables deterministic algorithms, trades reproducibility for faster torch ops and sometimes causes errors | default: True")
     
     # --- tuning-specific arguments ---
-    parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=20,
-                help="Number of epochs to run per tuning trial | default: 20")
-    parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=4,
-                help="Minimum number of epochs to run before pruning a trial that is not beating the current stage best | default: 4")
-    
-    parser.add_argument('--start-stage', dest="start_stage", type=int, default=1,
-                help="Stage to start from (1-6), useful for resuming | default: 1")
-    parser.add_argument('--end-stage', dest="end_stage", type=int, default=6,
-                help="Stage to stop after (1-6), inclusive | default: 6")
+    parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=50,
+                help="Number of epochs to run per tuning trial | default: 50")
+    parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=5,
+                help="Minimum number of epochs to wait to see if a trial is better than than the previous trials best epoch | default: 5")
     parser.add_argument('--config-file', dest="config_file", type=str,
                 help="Input config file path to override base tuning config with | default: None")
     
@@ -71,12 +66,6 @@ def process_args():
         raise ValueError("[--tune-epochs] must be >= 1")
     if not (1 <= args.epoch_patience):
         raise ValueError("[--epoch-patience] must be >= 1")
-    if not (1 <= args.start_stage <= 6):
-        raise ValueError("[--start-stage] must be between 1 and 6")
-    if not (1 <= args.end_stage <= 6):
-        raise ValueError("[--end-stage] must be between 1 and 6")
-    if args.start_stage > args.end_stage:
-        raise ValueError("[--start-stage] must be <= [--end-stage]")
     if hasattr(args, "config_file") and args.config_file is not None:
         config_file = Path(args.config_file)
         if not config_file.is_file():
@@ -252,7 +241,8 @@ class HyperparameterSearch(ModelTrainer):
         self.best_tuned_params = {}
         self.best_overall_config = dict(self.base_config)
         self.best_overall_loss = float("inf")
-
+        self.best_overall_epoch = -1
+        
         self.tuning_dir = Path(output_folder)
         self.tuning_dir.mkdir(parents=True, exist_ok=True)
 
@@ -279,27 +269,31 @@ class HyperparameterSearch(ModelTrainer):
         save_to_json(path, self.best_stage_config)
         self.logger.info(f"[TUNING] Saved best config after {stage_name} -> {path}")
 
-    def update_best_configs(self, new_params: dict, stage_loss: float):
+    def update_best_configs(self, new_params: dict, stage_loss: float, stage_epoch):
         """Carry best settings forward; also update global best if improved."""
         self.best_stage_config.update(new_params)
+
+        self.best_tuned_params.update(new_params)
+        self.best_overall_config = dict(self.base_config)
+        self.best_overall_config.update(self.best_tuned_params)
+
         if stage_loss < self.best_overall_loss:
             self.best_overall_loss = stage_loss
-            self.best_tuned_params.update(new_params)
-            self.best_overall_config = dict(self.base_config)
-            self.best_overall_config.update(self.best_tuned_params)
-            self.logger.info(f"[TUNING] New global best loss = {stage_loss:.8f}")
+            self.best_overall_epoch = stage_epoch
+            self.logger.info(f"[TUNING] New global best loss = {stage_loss:.8f} at epoch = {stage_epoch}")
 
-    def override_best_(self, new_params: dict, new_loss: float):
+    def override_best_(self, new_params: dict, new_loss: float, new_epoch: int):
         """Hard-override best configs and loss (e.g. when resuming)."""
         self.best_stage_config.update(new_params)
         self.best_tuned_params.update(new_params)
         self.best_overall_config = dict(self.base_config)
         self.best_overall_config.update(self.best_tuned_params)
         self.best_overall_loss = new_loss
+        self.best_overall_epoch = new_epoch
 
     def load_best_config(self, path: str):
         """Load a previously saved best_config JSON to resume tuning."""
-        cfg = read_from_json(path, as_dict=True)
+        cfg = read_from_json(path)
         self.best_stage_config.update(cfg)
         self.best_tuned_params = {
             key: value
@@ -335,6 +329,9 @@ class HyperparameterSearch(ModelTrainer):
     def _stage_csv_path(self, stage_name: str) -> Path:
         return self.tuning_dir / f"{stage_name}_results.csv"
 
+    def _resume_state_path(self) -> Path:
+        return self.tuning_dir / "tuning_state.json"
+
     def _get_hyper_params(self, params: dict) -> str:
         return json.dumps(params, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -345,6 +342,41 @@ class HyperparameterSearch(ModelTrainer):
 
         df = pd.read_csv(csv_path).fillna("")
         return df.to_dict(orient="records")
+
+    def save_resume_state(self, last_completed_stage_id: int, last_completed_stage_name: str):
+        state = {
+            "last_completed_stage_id": last_completed_stage_id,
+            "last_completed_stage_name": last_completed_stage_name,
+            "best_stage_config": self.best_stage_config,
+            "best_tuned_params": self.best_tuned_params,
+            "best_overall_config": self.best_overall_config,
+            "best_overall_loss": self.best_overall_loss,
+            "best_overall_epoch": self.best_overall_epoch,
+        }
+        save_to_json(self._resume_state_path(), state)
+        self.logger.info(f"[TUNING] Saved resume state -> {self._resume_state_path()}")
+
+
+    def load_resume_state(self) -> dict | None:
+        path = self._resume_state_path()
+        if not path.is_file():
+            return None
+
+        state = read_from_json(path)
+
+        self.best_stage_config = dict(state.get("best_stage_config", self.best_stage_config))
+        self.best_tuned_params = dict(state.get("best_tuned_params", self.best_tuned_params))
+        self.best_overall_config = dict(state.get("best_overall_config", self.best_overall_config))
+        self.best_overall_loss = float(state.get("best_overall_loss", self.best_overall_loss))
+        self.best_overall_epoch = int(state.get("best_overall_epoch", self.best_overall_epoch))
+
+        self.logger.info(
+            f"[TUNING] Loaded resume state <- {path} "
+            f"last_stage={state.get('last_completed_stage_id', 'none')} "
+            f"best_loss={self.best_overall_loss:.8f} "
+            f"best_epoch={self.best_overall_epoch}"
+        )
+        return state
 
     def _existing_stage_state(self, stage_name: str):
         rows = self._read_stage_results(stage_name)
@@ -410,7 +442,7 @@ class HyperparameterSearch(ModelTrainer):
         combined_df.to_csv(csv_path, index=False)
 
 
-    def _run_trial_with_pruning(self, trainer: ModelTrainer, stage_best_loss: float):
+    def _run_trial_with_pruning(self, trainer: ModelTrainer):
         trainer.mae_model = trainer.mae_model.to(trainer.device)
 
         for epoch in range(1, trainer.config["num_epochs"] + 1):
@@ -421,8 +453,11 @@ class HyperparameterSearch(ModelTrainer):
             trainer.scheduler_step(valid_loss)
             trainer.check_improvement(valid_loss, epoch)
 
-            if epoch >= self.epoch_patience and trainer.best_valid_loss >= stage_best_loss:
-                return trainer.best_valid_loss, trainer.best_model_epoch, True
+            if np.isfinite(self.best_overall_loss) and self.best_overall_epoch > 0:
+                prune_epoch = self.best_overall_epoch + self.epoch_patience
+
+                if epoch >= prune_epoch and trainer.best_valid_loss >= self.best_overall_loss:
+                    return trainer.best_valid_loss, trainer.best_model_epoch, True
 
             if trainer._should_earlystop():
                 break
@@ -441,7 +476,7 @@ class HyperparameterSearch(ModelTrainer):
     def run_stage(self, stage_id: int, param_grid: dict, stage_name: str) -> tuple:
         combos = _grid_combinations(param_grid)
         completed, best_loss, best_params, best_trial_id, best_so_far_epoch = self._existing_stage_state(stage_name)
-
+        
         self.logger.info(f"[{stage_name}] stage_trials={len(combos)} already_complete={len(completed)}")
 
         if completed:
@@ -472,10 +507,7 @@ class HyperparameterSearch(ModelTrainer):
                 trainer = self.make_trainer(cfg, label)
                 config_path = str((Path(trainer.output_folder) / "resolved_train_config.json").resolve())
 
-                loss, best_epoch, pruned = self._run_trial_with_pruning(
-                    trainer=trainer,
-                    stage_best_loss=best_loss,
-                )
+                loss, best_epoch, pruned = self._run_trial_with_pruning(trainer=trainer)
                 status = "pruned" if pruned else "complete"
 
             except Exception as exc:
@@ -514,41 +546,32 @@ class HyperparameterSearch(ModelTrainer):
                 f"loss={loss:.8f} best_trial={best_trial_id} best_loss={best_loss:.8f}"
             )
 
-        return best_params, best_loss, best_trial_id
+        return best_params, best_loss, best_trial_id, best_so_far_epoch
     # --------------------------------------------------
     # run: top-level entry point
     # Contributor: Wen Yu
     # --------------------------------------------------
         
-    def tune_model(self, start_stage: int = 1, end_stage: int | None = None):
+    def tune_model(self):
+        self.load_resume_state()
         stage_defs = get_stage_grids(self.best_stage_config)
-        max_stage = max(stage_defs.keys())
-
-        if end_stage is None:
-            end_stage = max_stage
-
-        stage_ids = [s for s in sorted(stage_defs.keys()) if start_stage <= s <= end_stage]
-
-        if not stage_ids:
-            raise ValueError(f"No stages selected between {start_stage} and {end_stage}")
+        stage_ids = [s for s in sorted(stage_defs.keys())]
 
         for stage_id in stage_ids:
             stage_defs = get_stage_grids(self.best_stage_config)
             stage_name = stage_defs[stage_id]["name"]
             param_grid = stage_defs[stage_id]["grid"]
 
-            best_params, best_loss, best_trial_id = self.run_stage(stage_id, param_grid, stage_name)
+            best_params, best_loss, best_trial_id, best_epoch = self.run_stage(stage_id, param_grid, stage_name)
             self.logger.info(
                 f"[Stage {stage_id}] name={stage_name} "
                 f"best_trial={best_trial_id} best_loss={best_loss:.8f} best_params={best_params}"
             )
 
-            self.update_best_configs(best_params, best_loss)
+            self.update_best_configs(best_params, best_loss, best_epoch)
             self.save_best_so_far(stage_name)
-            self.logger.info(f"[Overall] best_loss={self.best_overall_loss:.8f} best_config={self.best_overall_config}")
-
-        best_overall_path = self.output_folder / "best_overall_config.json"
-        save_to_json(best_overall_path, self.best_overall_config)
+            self.save_resume_state(stage_id, stage_name)
+            self.logger.info(f"[Overall] best_trial_id={best_trial_id}, best_loss={self.best_overall_loss:.8f}")
 
         best_tuned_params_path = self.output_folder / "best_tuned_params.json"
         save_to_json(best_tuned_params_path, self.best_tuned_params)
@@ -606,7 +629,7 @@ def main(args):
         epoch_patience=args.epoch_patience
     )
 
-    search.tune_model(start_stage=args.start_stage, end_stage=args.end_stage)
+    search.tune_model()
 
 
 if __name__ == "__main__":

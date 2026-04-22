@@ -276,7 +276,7 @@ Dataset download page: https://zenodo.org/records/11117528
     --input-folder "data/preprocessed/galaxiesml_tiny" \
     --output-folder experiments/tune_debug_grid \
     --gpu-memory-fraction 0.9 \
-    --num-cores {NUM_CORES} \
+    --num-cores <num_cores> \
     --debug
     ```
 
@@ -288,7 +288,7 @@ Dataset download page: https://zenodo.org/records/11117528
     --input-folder data/preprocessed/galaxiesml_tiny \
     --output-folder experiments/train_galaxiesml_tiny \
     --gpu-memory-fraction 0.9 \
-    --num-cores {NUM_CORES} \
+    --num-cores <num_cores> \
     --debug
     ```
 
@@ -326,7 +326,13 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### E. Tune the model 
 
-### Note: If tuning is interrupted, simply restart from scratch. `tune_model.py` autodetects and skips completed trials from CSV logs.
+### Important Notes: 
+
+1. `tune_model.py` autodetects and recovers completed stages and trials from logs
+2. Each trial runs for at most 50 epochs
+3. A trial stops early if either of these happens:
+   - its validation loss does not improve for 5 consecutive epochs, or
+   - it does not beat the current best validation loss within 5 epochs of the best trial's best epoch
 
 ```bash
 python src/tune_model.py \
