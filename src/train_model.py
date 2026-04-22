@@ -29,10 +29,11 @@ def process_args():
                 help="PyTorch device can only use default CPU; Overrides other device options | default: Off")
     parser.add_argument('--num-cores', dest="num_cores", type=int, default=1, 
                 help="Number of cpu cores (tasks) to run in parallel. If multi-threading is enabled, max threads is set to (num_tasks * 2) | default: 1")
-    parser.add_argument('--enable-deterministic',  dest='enable_deterministic', action='store_true', 
-                help="Enables deterministic algorithms at the cost of higher runtimes | default: Off")
+    parser.add_argument('--disable-deterministic',  dest='disable_deterministic', action='store_false', 
+                help="Disables deterministic algorithms, trades reproducibility for faster torch ops | default: False")
     
     args = parser.parse_args()
+
 
     if isinstance(args.gpu_device_list, int):
         args.gpu_device_list = [args.gpu_device_list]
@@ -48,7 +49,10 @@ def process_args():
     output_path = Path(args.output_folder)
     if not (0 < len(str(output_path)) < 256):
         raise ValueError(f"[--output-folder] '{output_path}' must have a length between [1, 255]")
-
+    config_file = Path(args.config_file)
+    if not config_file.is_file():
+        raise FileNotFoundError(f"[--config-file] '{config_file}' does not exist")
+    
     return args
 
 
@@ -65,10 +69,12 @@ class ModelTrainer:
         input_folder,
         output_folder,
         device="cuda" if pt.cuda.is_available() else "cpu",
+        make_subdirs=True
     ):
         self.logger = get_logger()
         self.device = device if isinstance(device, pt.device) else pt.device(device)
-        self.config = validate_config(merge_config(config))
+        self.make_subdirs = make_subdirs
+        self.config = merge_config(config)
 
         self.input_folder = Path(input_folder).resolve()
         self.output_folder = Path(output_folder).resolve()
@@ -79,12 +85,6 @@ class ModelTrainer:
         self.plots_dir = self.artifacts_dir / "plots"
         self.metrics_dir = self.artifacts_dir / "metrics"
         self.samples_dir = self.artifacts_dir / "samples"
-
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
-        self.plots_dir.mkdir(parents=True, exist_ok=True)
-        self.metrics_dir.mkdir(parents=True, exist_ok=True)
-        self.samples_dir.mkdir(parents=True, exist_ok=True)
 
         prep_datasets_path = self.input_folder / "prepare_datasets.pth"
         self.prepare_datasets = PrepareDatasets.load(
@@ -103,11 +103,9 @@ class ModelTrainer:
         prep_metadata_path = self.input_folder / "preprocessing_metadata.json"
         prep_metadata = read_from_json(prep_metadata_path)
         self.config["input_shape"] = prep_metadata["dataset_sample_shapes"]["x_masked_image"]
-
-        prep_metadata.get("dataset_sample_shapes", {})
-        save_to_json(self.output_folder / "resolved_train_config.json", self.config)
-
         self.config["mask_ratio"] = prep_metadata["dataset_masking"]["mask_ratio"]
+
+        self.config = validate_config(self.config)
 
         self.mae_model = MaskedAutoencoder(self.config)
         self.logger.debug(f"CNNEncoder.hidden_per_layer: {self.mae_model.encoder.hidden_per_layer}")
@@ -175,6 +173,14 @@ class ModelTrainer:
         trainable_params = sum(p.numel() for p in self.mae_model.parameters() if p.requires_grad)
         self.logger.info(f"MaskedAutoEncoder: total_params = {total_params}, trainable_params = {trainable_params}")
 
+        if self.make_subdirs:
+            self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
+            self.plots_dir.mkdir(parents=True, exist_ok=True)
+            self.metrics_dir.mkdir(parents=True, exist_ok=True)
+            self.samples_dir.mkdir(parents=True, exist_ok=True)
+            save_to_json(self.output_folder / "resolved_train_config.json", self.config)
+            
     def setup_optimizer(self, model):
         if self.config["optim_type"] == "adam":
             self.optimizer = pt.optim.Adam(
@@ -585,20 +591,22 @@ class ModelTrainer:
                 )
                 
             if self._should_earlystop():
+                
                 self.logger.info(
                     f"Early stopping at epoch={epoch}, "
                     f"best_epoch={self.best_model_epoch}, "
                     f"best_valid_loss={self.best_valid_loss:.8f}"
                 )
                 break
-    
+
+        self.final_epoch = epoch
         # final model results
         final_test_metrics = self.evaluate(self.mae_model, is_validation=False, epoch="final")
         self.save_model_checkpoint(
             file_name="final_model.pth",
             model_state_dict=self.mae_model.state_dict(),
             extra_data={
-                "final_model_epoch": epoch,
+                "final_model_epoch": self.final_epoch,
                 "final_valid_loss": valid_loss,
                 "final_test_metrics": final_test_metrics,
                 "history": self.history,
@@ -644,7 +652,7 @@ def main(args):
         args.gpu_device_list,
         args.gpu_memory_fraction,
         args.random_seed,
-        args.enable_deterministic
+        args.disable_deterministic
     )
 
     logger.info(f"Using device = {device}")

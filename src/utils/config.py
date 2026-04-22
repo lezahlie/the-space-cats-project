@@ -4,60 +4,59 @@ Utilities for parsing yaml and/or json configs
 from src.utils.common import copy, AttrDict
 
 
+DEFAULT_CONFIG = {
+    "num_epochs": 200,
 
-DEFAULT_TRAIN_CONFIG = {
-    "debug": False,
-    "input_shape": [5, 64, 64],
-    "num_workers": 1,
-    "random_seed": 42,
+    # loss
+    "ssim_loss_weight": 0.0,
 
-    "mask_ratio": 0.0,
-    "num_epochs": 50,
-    "ssim_loss_weight": 0.5,
-
+    # optimizer
     "batch_size": 64,
     "learn_rate": 5e-4,
-    "lr_scheduler": "plateau",
-    "lr_scheduler_patience": 3,
-    "lr_scheduler_factor": 0.2,
-    "lr_scheduler_min_lr": 1e-6,
-
     "weight_decay": 0.0,
     "optim_beta1": 0.9,
     "optim_beta2": 0.999,
     "optim_type": "adamw",
 
+    # scheduler
+    "lr_scheduler": "plateau",
+    "lr_scheduler_patience": 3,
+    "lr_scheduler_factor": 0.5,
+    "lr_scheduler_min_lr": 1e-6,
+
+    # architecture
     "hidden_layers": 3,
-    "hidden_dims": 128,
-    "latent_dims": 128,
+    "hidden_dims": 64,
+    "latent_dims": 64,
     "conv_kernel": 3,
     "conv_stride": 1,
-
     "activation_function": "relu",
-    "norm_layer": "none",   
+    "norm_layer": "none",
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
     "ascending_channels": False,
 
+    # early stopping
     "enable_earlystop": True,
     "earlystop_patience": 5,
     "earlystop_min_delta": 1e-4,
 
+    # logging / plotting
     "log_epoch_frequency": 1,
-    "log_batch_frequency": 14,
-    "plot_last_batch_frequency": 1,
-    "plot_last_batch_limit": 3
+    "log_batch_frequency": 0,
+    "plot_last_batch_frequency": 5,
+    "plot_last_batch_limit": 1,
 }
 
 
 def merge_config(user_config):
     if user_config is None:
-        return AttrDict(copy.deepcopy(DEFAULT_TRAIN_CONFIG))
+        return AttrDict(copy.deepcopy(DEFAULT_CONFIG))
 
     if not isinstance(user_config, dict):
         raise TypeError(f"config must be a dict, got {type(user_config).__name__}")
 
-    config = copy.deepcopy(DEFAULT_TRAIN_CONFIG)
+    config = copy.deepcopy(DEFAULT_CONFIG )
     config.update(user_config)
     return AttrDict(config)
 

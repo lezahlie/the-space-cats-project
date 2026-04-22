@@ -1,6 +1,6 @@
 {
     "_description": "training config with default hyper-parameters for tuning",
-    "num_epochs": 100,
+    "num_epochs": 50,
     "batch_size": 64,
     "ssim_loss_weight": 0.5,
 

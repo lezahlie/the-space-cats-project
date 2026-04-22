@@ -1,0 +1,16 @@
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+torch==2.4.1
+torchaudio==2.4.1
+torchvision==0.19.1
+numpy
+scipy
+scikit-learn
+scikit-image
+torchmetrics
+h5py
+jsonschema
+pandas
+pyyaml
+matplotlib
+seaborn
