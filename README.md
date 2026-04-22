@@ -237,8 +237,8 @@ Dataset download page: https://zenodo.org/records/11117528
         cd "/path/to/the-space-cats-project"
         mkdir -p venvs
 
-        python3.10 -m venv venvs/spacecats-cu118
-        source venvs/spacecats-cu118/bin/activate
+        python3.10 -m venv venvs/spacecats-cuda
+        source venvs/spacecats-cuda/bin/activate
 
         pip install --upgrade pip setuptools wheel
         pip install -r cuda_requirements.txt
@@ -246,18 +246,68 @@ Dataset download page: https://zenodo.org/records/11117528
 
         > Make sure to update `/path/to/the-space-cats-project` with the absolute path to the project
 
+### C. Test the pipeline
 
-### C. Run Preprocessing 
+1. Download `galaxiesml_tiny.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQB9Tz4RzNToRp4_vzHCXsY4AW4oPO2cBqAouYW8iNh3jsI?e=lv9BOT
+
+  Extract it to the data folder
+
+  ```bash
+  cd "/path/to/the-space-cats-project"
+
+  mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+  ```
+
+2. Test preprocessing works
+
+```bash
+python src/preprocess_data.py \
+--input-folder data/galaxiesml_tiny \
+--output-folder data/preprocessed \
+--num-cores 2 \
+--mask-ratio 0.5 \
+--debug
+```
+
+3. Test tuning works
+
+```bash
+python src/tune_model.py \
+--input-folder "data/preprocessed/galaxiesml_tiny" \
+--output-folder experiments/tune_debug_grid \
+--num-cores {NUM_CORES} \
+--gpu-memory-fraction 0.9 \
+--debug
+```
+
+4. Test training works
+
+```bash
+python src/train_model.py \
+--config-file configs/train_config.json \
+--input-folder data/preprocessed/galaxiesml_tiny \
+--output-folder experiments/train_galaxiesml_tiny \
+--gpu-memory-fraction 0.5 \
+--num-cores {NUM_CORES} \
+--disable-deterministic \
+--debug
+```
+
+> Note: Disabling deterministic due to a unsupported pytorch operation. Should work fine for tuning though.
+
+5. If you got to this point then your ready to start tuning and be aware that it make take several days.
+
+### D. Run Preprocessing
 
 1. Download `galaxiesml_medium.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQArE7VrCfj2Sqpwv9jNly0JARb2qsCnRMXKgiz8BAt0x-I?e=5ydyFl
 
 2. Extract it to the data folder
 
-    ```bash
-    cd "/path/to/the-space-cats-project"
+  ```bash
+  cd "/path/to/the-space-cats-project"
 
-    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
-    ```
+  mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+  ```
 
 3. Preprocess with your assigned mask ratio 
 
@@ -275,7 +325,7 @@ Dataset download page: https://zenodo.org/records/11117528
     >- Chris: `mask_ratio = 0.5`
     >- Wen: `mask_ratio = 0.75`
 
-### D. Tune the model 
+### E. Tune the model 
 
 ```bash
 python src/tune_model.py \
@@ -290,7 +340,7 @@ python src/tune_model.py \
 > - For system requirements refer to [A. Prerequisites](#step-2-masked-autoencoder-experiments-a-prerequisites)
 
 
-### E. Train the best model
+### F. Train the best model
 
 1. Copy the best overall config from tuning to the configs folder
 
@@ -307,14 +357,16 @@ python src/train_model.py \
 --input-folder "data/preprocessed/galaxiesml_medium" \
 --output-folder "experiments/train_mae_<first_name>_<mask_ratio>" \
 --gpu-memory-fraction 0.9 \
---num-cores <num_cores>
+--num-cores <num_cores> \
+--disable-deterministic
 ```
+
 > Notes
 > - This will run for more epochs with early stopping
 > - Save outputs for downstream regression and analysis
 
 
-### F. Handling downstream predictions
+### G. Handling downstream predictions
 
 1. Predict redshift with reconstructions (Chris)
 
@@ -361,7 +413,7 @@ test_data = GalaxiesMLDataset(test_path, input_key = "z_latent_vector", target_k
      - Output: `y_recon_image` 
      - Target: `y_target_image` 
    - Experiments: 
-     - `MAE-Baseline`: mask_ratio $ = 0.0$
+     - `MAE-Baseline`: mask_ratio = 0.0
      - `MAE-Ablation`: mask_ratio $\in \{0.0, 0.25, 0.5, 0.75\}$
    - Analysis:
      - (REQUIRED) Testing set: KDE plots for reconstruction error
@@ -388,15 +440,10 @@ test_data = GalaxiesMLDataset(test_path, input_key = "z_latent_vector", target_k
      - Input: `y_recon_image`
      - Output: `y_pred_redshift`
      - Target: `y_spez_redshift`
-    - KNN Tuning: 
-      - Option A: Tune KNN with best results for `MAE-Baseline` and save best params as fixed
-      - Option B: Tune KNN with the original images from the source dataset and save best params as fixed
-    - KNN Training: 
-      - Option A: Train KNN with best model outputs results for each `MAE-Ablation` with the fixed params 
-      - Option B: Same as Option A, except also train with the best results `MAE-Baseline` 
-    - Reconstruction Analysis: 
-      - Option A: MAE-Baseline (1) vs (3) MAE-Ablations
-      - Option B: Original images (4) MAE-Baseline + MAE-Ablations
+    - CNN Tuning: 
+      - Tune KNN with the original images from the source dataset and save best params as fixed
+    - CNN Training: 
+      - Train CNN with best model outputs results for `MAE-Baseline` and each `MAE-Ablation` with the fixed params 
     - Analysis: 
       - (REQUIRED) Testing set: prediction error plots
       - (REQUIRED) Training/validation set: learning curves OR something else interesting

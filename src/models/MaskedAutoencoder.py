@@ -152,7 +152,7 @@ class MaskedAutoencoder(NN.Module):
 def test_main(args):
     from src.utils.device import SetupDevice
     from src.utils.logger import set_logger_level, get_logger
-    from src.utils.config import DEFAULT_TRAIN_CONFIG
+    from src.utils.config import DEFAULT_CONFIG
     set_logger_level(10)
     logger = get_logger()
 
@@ -172,7 +172,7 @@ def test_main(args):
     batch_input_shape = (batch_size, input_channels, input_size, input_size)
     expected_encoder_shape = (batch_size, latent_dims)
 
-    config = AttrDict(DEFAULT_TRAIN_CONFIG)
+    config = AttrDict(DEFAULT_CONFIG)
     config.input_shape = batch_input_shape[1:]
     model = MaskedAutoencoder(config)
 

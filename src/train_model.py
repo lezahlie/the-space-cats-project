@@ -336,10 +336,18 @@ class ModelTrainer:
         model.eval()
 
         save_path = self.samples_dir / file_name
-        writer = None
         total_rows = 0
+        writer = None
+        sample_batch = None
+        y_recon = None
+        z_latent = None
+        x_input = None
+
         try:
             for batch_idx, batch in enumerate(loader, start=1):
+
+                del sample_batch, y_recon, z_latent, x_input
+
                 x_input = batch.x_masked_image.to(self.device, non_blocking=True)
 
                 z_latent = model.encode(x_input)
@@ -366,8 +374,6 @@ class ModelTrainer:
 
                 writer.append(sample_batch)
                 total_rows += batch_size
-
-                del sample_batch, y_recon, z_latent, x_input
 
                 if self._should_log_batch(batch_idx, len(loader)):
                     self.logger.info(f"[EXPORT]: Batch[{batch_idx}/{len(loader)}] saved_rows={total_rows}")
