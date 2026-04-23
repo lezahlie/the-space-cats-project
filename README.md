@@ -126,34 +126,28 @@ tar -xvf path/to/galaxiesml_<size>.tar.gz -C data/
 ```
 
 - `galaxiesml_tiny.tar.gz`: Good for debugging issues and just getting stuff working
-  - `5x64x64_training_reduced_tiny.hdf5`: N=1750
+  - `5x64x64_training_reduced_tiny.hdf5`: N=2500
   - `5x64x64_validation_reduced_tiny.hdf5`: N=500
   - `5x64x64_testing_reduced_tiny.hdf5`: N=250
-  - total: N=2500
+  - total: N=3250
 
 - `galaxiesml_small.tar.gz`: Good for testing training/evaluation and tuning workflows
-  - `5x64x64_training_reduced_small.hdf5`: N=3500
+  - `5x64x64_training_reduced_small.hdf5`: N=5000
   - `5x64x64_validation_reduced_small.hdf5`: N=1000
   - `5x64x64_testing_reduced_small.hdf5`: N=500
-  - total: N=5000
+  - total: N=6500
 
-- `galaxiesml_medium.tar.gz`: Good for final experimentation (unless large fits)
-  - `5x64x64_training_reduced_medium.hdf5`: N=17500
-  - `5x64x64_validation_reduced_medium.hdf5`: N=5000
-  - `5x64x64_testing_reduced_medium.hdf5`: N=2500
-  - total: N=25000
+- `galaxiesml_medium.tar.gz`: Good for final experimentation unless large fits
+  - `5x64x64_training_reduced_medium.hdf5`: N=10000
+  - `5x64x64_validation_reduced_medium.hdf5`: N=2000
+  - `5x64x64_testing_reduced_medium.hdf5`: N=1000
+  - total: N=13000
 
 - `galaxiesml_large.tar.gz`: Ideal size for final experimentation
-  - `5x64x64_training_reduced_large.hdf5`: N=35000
-  - `5x64x64_validation_reduced_large.hdf5`: N=10000
-  - `5x64x64_testing_reduced_large.hdf5`: N=5000
-  - total: N=50000
-
-- `galaxiesml_mega.tar.gz`: Possibly overkill for reconstruction
-  - `5x64x64_training_reduced_mega.hdf5`: N=70000
-  - `5x64x64_validation_reduced_mega.hdf5`: N=20000
-  - `5x64x64_testing_reduced_mega.hdf5`: N=10000
-  - total: N=100000
+  - `5x64x64_training_reduced_large.hdf5`: N=20000
+  - `5x64x64_validation_reduced_large.hdf5`: N=4000
+  - `5x64x64_testing_reduced_large.hdf5`: N=2000
+  - total: N=26000
 
 > - Each reduced dataset is packaged as tar gzip archive containing reduced training, validation, and testing HDF5 files
 > - In addition, each archive includes a metadata text file describing the internal HDF5 structure
@@ -248,7 +242,7 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### C. Test the pipeline
 
-1. Download `galaxiesml_tiny.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQB9Tz4RzNToRp4_vzHCXsY4AW4oPO2cBqAouYW8iNh3jsI?e=lv9BOT
+1. Download `galaxiesml_tiny.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQCavSjOG4EzSa62o0fZPaPJAUdR4WKUkWPAAOOk1E-g6YI?e=1SnoPD
 
     Extract it to the data folder
 
@@ -298,14 +292,14 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### D. Run Preprocessing
 
-1. Download `galaxiesml_medium.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQArE7VrCfj2Sqpwv9jNly0JARb2qsCnRMXKgiz8BAt0x-I?e=5ydyFl
+1. Download `galaxiesml_medium.tar.gz` and `galaxiesml_large.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQCavSjOG4EzSa62o0fZPaPJAUdR4WKUkWPAAOOk1E-g6YI?e=1SnoPD
 
     Extract it to the data folder
 
     ```bash
     cd "/path/to/the-space-cats-project"
-
     mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_large.tar.gz" -C "data/"
     ```
 
 2. Preprocess with your assigned mask ratio 
@@ -313,6 +307,14 @@ Dataset download page: https://zenodo.org/records/11117528
     ```bash
     python src/preprocess_data.py \
     --input-folder "data/galaxiesml_medium" \
+    --output-folder "data/preprocessed" \
+    --num-cores <num_cores> \
+    --mask-ratio <mask_ratio>
+    ```
+
+    ```bash
+    python src/preprocess_data.py \
+    --input-folder "data/galaxiesml_large" \
     --output-folder "data/preprocessed" \
     --num-cores <num_cores> \
     --mask-ratio <mask_ratio>
@@ -361,13 +363,13 @@ python src/tune_model.py \
     ```bash
     python src/train_model.py \
     --config-file "configs/best_config_<first_name>_<mask_ratio>.json" \
-    --input-folder "data/preprocessed/galaxiesml_medium" \
+    --input-folder "data/preprocessed/galaxiesml_large" \
     --output-folder "experiments/train_mae_<first_name>_<mask_ratio>" \
     --gpu-memory-fraction 0.9 \
     --num-cores <num_cores>
     ```
 
-    > Notes
+    > Notes 
     > - This will run for more epochs with early stopping
     > - Save outputs for downstream regression and analysis
 

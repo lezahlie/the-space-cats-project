@@ -319,13 +319,13 @@ if __name__ == "__main__":
 
 """
 Example usage (baseline - self-tunes, saves knn_best_params.yaml):
-python -m src.analysis.knn_classifier \
+python -m src.analysis.knn_regressor \
 --input-folder experiments/train_mae_leslie_0.0/artifacts/samples \
 --output-folder experiments/knn_results/train_mae_leslie_0.0 \
 --debug
 
 Example usage (everyone else - uses fixed params from baseline):
-python -m src.analysis.knn_classifier \
+python -m src.analysis.knn_regressor \
 --params-file configs/knn_best_params.yaml \
 --input-folder experiments/train_mae_charlie_0.25/artifacts/samples \
 --output-folder experiments/knn_results/train_mae_charlie_0.25 \
