@@ -37,8 +37,8 @@ def process_args():
                 help="Enables deterministic algorithms, trades reproducibility for faster torch ops and sometimes causes errors | default: True")
     
     # --- tuning-specific arguments ---
-    parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=50,
-                help="Number of epochs to run per tuning trial | default: 50")
+    parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=30,
+                help="Number of epochs to run per tuning trial | default: 30")
     parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=10,
                 help="Minimum number of epochs to wait to see if a trial is better than than the previous trials best epoch | default: 10")
     parser.add_argument('--config-file', dest="config_file", type=str,
