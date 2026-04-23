@@ -70,7 +70,7 @@ class MaskedAutoencoder(NN.Module):
             negative_slope = self.negative_slope,
             norm_layer = self.norm_layer,
             conv_kernel=self.conv_kernel,
-            conv_stride=self.conv_stride
+            conv_stride=2
         )
 
         self.encoder.to(device=self.device)
@@ -95,7 +95,7 @@ class MaskedAutoencoder(NN.Module):
             negative_slope = self.negative_slope,
             norm_layer = self.norm_layer,
             conv_kernel=self.conv_kernel,
-            conv_stride=self.conv_stride
+            conv_stride=1
         )
 
         self.decoder.to(device=self.device)

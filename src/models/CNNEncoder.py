@@ -79,7 +79,7 @@ class CNNEncoder(NN.Module):
         # compute output size based on input size
         output_size = compute_output_size(self.input_size)
 
-       # initialize encoder layers: input_layer => encoder_layers
+        # initialize encoder layers: input_layer => encoder_layers
         self.encoder_layers = NN.ModuleList()
         for i in range(1, self.hidden_layers):
             in_chan = self.hidden_per_layer[i - 1]

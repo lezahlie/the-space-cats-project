@@ -244,9 +244,9 @@ def test_main(args):
     )
 
     logger.debug(f"Latent input shape: {dummy_latent.shape}")
-    logger.debug(f"[CNNDecoder]:\nDecoder Input Layer: {model.decoder.input_layer}"
-                f"\nDecoder Hidden Layers: {model.decoder.decoder_layers}"
-                f"\nDecoder Output Layer: {model.decoder.output_layer}")
+    logger.debug(f"[CNNDecoder]:\nDecoder Input Layer: {model.input_layer}"
+                f"\nDecoder Hidden Layers: {model.decoder_layers}"
+                f"\nDecoder Output Layer: {model.output_layer}")
 
     decoder_output = model(dummy_latent)
     logger.debug(f"Decoder output shape: {decoder_output.shape}, expected_shape: {expected_output_shape}")
