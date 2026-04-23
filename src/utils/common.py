@@ -340,6 +340,22 @@ def read_from_json(file_path):
         get_logger().error(f"Error reading to JSON file: {file_path}")
         raise e
 
+def save_to_yaml(file_path, content):
+    try:
+        with open(file_path, 'w') as yaml_file:
+            yaml.dump(content, yaml_file, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        get_logger().error(f"Error saving to YAML file: {file_path}")
+        raise e
+
+def load_from_yaml(file_path):
+    try:
+        with open(file_path, 'r') as yaml_file:
+            return yaml.safe_load(yaml_file)
+    except Exception as e:
+        get_logger().error(f"Error reading YAML file: {file_path}")
+        raise e
+
 def tensor_to_image(x):
     if isinstance(x, pt.Tensor):
         x = x.detach().cpu().float().numpy()
