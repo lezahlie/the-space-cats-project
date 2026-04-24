@@ -3,13 +3,13 @@
 # Env vars required: MASK_RATIO (0.0 | 0.25 | 0.5 | 0.75), PERSON (first name)
 # Before submitting: run 'sinfo' to verify --partition and 'sacctmgr show assoc user=$(whoami)' for --account
 
-#SBATCH --partition=gpu-v100
+#SBATCH --partition=ice-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5 # 5 requested, script uses 4, 1 for the OS
 #SBATCH --mem=24G
 #SBATCH --gres=gpu:1
-#SBATCH --time=72:00:00 # tune_model.py auto-recovers completed stages if resubmitted
+#SBATCH --time=16:00:00 # ice-gpu max; tune_model.py auto-recovers completed stages if resubmitted
 # #SBATCH --account=<account>
 
 set -euo pipefail
