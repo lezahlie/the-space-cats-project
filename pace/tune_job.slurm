@@ -29,6 +29,7 @@ echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-?} ma
 module load anaconda3 2>/dev/null || module load miniconda3 2>/dev/null
 eval "$(conda shell.bash hook)"
 conda activate spacecats-cuda
+export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 nvidia-smi
 
 if [ ! -d "$PREP_DIR" ]; then
