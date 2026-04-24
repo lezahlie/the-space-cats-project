@@ -3,7 +3,7 @@
 # Usage: sbatch pace/test_job.slurm
 
 #SBATCH --job-name=test_train
-#SBATCH --partition=gpu-v100
+#SBATCH --partition=ice-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5 # 5 requested, script uses 4, 1 for the OS
