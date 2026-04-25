@@ -28,12 +28,12 @@
   "hidden_factor": 2.0,
   "ascending_channels": false,
 
-  "enable_earlystop": true,
-  "earlystop_patience": 5,
-  "earlystop_min_delta": 1e-4,
+    "enable_earlystop": true,
+    "earlystop_patience": 2,
+    "earlystop_min_delta": 0.0,
 
-  "log_epoch_frequency": 1,
-  "log_batch_frequency": 14,
-  "plot_last_batch_frequency": 1,
-  "plot_last_batch_limit": 1
+    "log_epoch_frequency": 1,
+    "log_batch_frequency": 16,
+    "plot_last_batch_frequency": 1,
+    "plot_last_batch_limit": 2
 }

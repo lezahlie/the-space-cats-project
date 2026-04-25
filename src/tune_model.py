@@ -1,5 +1,5 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, copy, Path, pt, datetime, json, pd, np, read_from_json, save_to_json
+from src.utils.common import argparse, os, copy, Path, pt, datetime, json, pd, np, time, read_from_json, save_to_json
 from src.utils.device import SetupDevice
 from src.train_model import ModelTrainer
 from src.preprocess_data import Normalize, PrepareDataset, PrepareDatasets
@@ -12,7 +12,7 @@ import itertools
 # CONTRIBUTION START: HyperparameterSearch, main()
 # Contributor: Wen Yu
 # ==================================================
- 
+
 
 def process_args():
     parser = argparse.ArgumentParser(description="Tune Model Executable", formatter_class= argparse.RawTextHelpFormatter)
@@ -35,12 +35,14 @@ def process_args():
                 help="Number of cpu cores (tasks) to run in parallel. If multi-threading is enabled, max threads is set to (num_tasks * 2) | default: 1")
     parser.add_argument('--deterministic',  dest='deterministic', action='store_true', 
                 help="Enables deterministic algorithms, trades reproducibility for faster torch ops and sometimes causes errors | default: True")
-    
+
     # --- tuning-specific arguments ---
-    parser.add_argument('--tune-epochs', dest="tune_epochs", type=int, default=30,
-                help="Number of epochs to run per tuning trial | default: 30")
-    parser.add_argument('--epoch-patience', dest="epoch_patience", type=int, default=10,
-                help="Minimum number of epochs to wait to see if a trial is better than than the previous trials best epoch | default: 10")
+    parser.add_argument('--tune-optimizer-steps', dest="tune_optimizer_steps", type=int, default=500,
+                help="Maximum optimizer steps per tuning trial | default: 500")
+    parser.add_argument('--validate-every-steps', dest="validate_every_steps", type=int, default=50,
+                help="Validate every N optimizer steps during tuning | default: 50")
+    parser.add_argument('--tune-patience', dest="tune_patience", type=int, default=5,
+                help="Early stopping/pruning patience in validation checks during tuning | default: 5")
     parser.add_argument('--config-file', dest="config_file", type=str,
                 help="Input config file path to override base tuning config with | default: None")
     
@@ -62,10 +64,20 @@ def process_args():
         raise FileNotFoundError(f"[--input-folder] '{args.input_folder}' does not exist")
     if not (0 < len(str(args.output_folder)) < 256):
         raise ValueError(f"[--output-folder] path is invalid")
-    if not (1 <= args.tune_epochs):
-        raise ValueError("[--tune-epochs] must be >= 1")
-    if not (1 <= args.epoch_patience):
-        raise ValueError("[--epoch-patience] must be >= 1")
+    if args.tune_optimizer_steps < 1:
+        raise ValueError("[--tune-optimizer-steps] must be >= 1")
+    if args.validate_every_steps < 1:
+        raise ValueError("[--validate-every-steps] must be >= 1")
+
+    max_validation_checks = max(1, int(np.ceil(args.tune_optimizer_steps / args.validate_every_steps)))
+
+    if not (1 <= args.tune_patience <= max_validation_checks):
+        raise ValueError(
+            f"[--tune-patience] must be between 1 and {max_validation_checks} (max_validation_checks) "
+            f"for tune_optimizer_steps={args.tune_optimizer_steps} "
+            f"and validate_every_steps={args.validate_every_steps}"
+        )
+    
     if hasattr(args, "config_file") and args.config_file is not None:
         config_file = Path(args.config_file)
         if not config_file.is_file():
@@ -82,11 +94,12 @@ def process_args():
 # Helpers
 # Contributor: Wen Yu
 # --------------------------------------------------
- 
+
 def _grid_combinations(param_grid: dict) -> list:
     """All combinations of a param_grid dict."""
     keys, values = list(param_grid.keys()), list(param_grid.values())
     return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+
 
 def _get_neighbors(best_val: float, candidates: list) -> list:
     """Return [prev, best, next] neighbors around best_val in candidates."""
@@ -140,7 +153,6 @@ def base2_neighbors(best_val: int, lower=8, upper=256) -> list[int]:
     return sorted(set(values.tolist()))
 
 
-
 def get_stage_grids(best_config: dict) -> dict:
 
     best_lr = best_config.get("learn_rate", 5e-4)
@@ -157,62 +169,70 @@ def get_stage_grids(best_config: dict) -> dict:
 
     if best_config.get("debug", False):
         return {
-            1: {"name": "stage1_debug", "grid": {"learn_rate": [1e-4, 1e-3], "num_epochs": [1]}},
-            2: {"name": "stage2_debug", "grid": {"ascending_channels": [True, False], "num_epochs": [1]}},
+            1: {"name": "stage1_learn_rate", "grid": {"learn_rate": [1e-4, 1e-3]}},
+            2: {"name": "stage2_batch_size", "grid": {"batch_size": [64, 128]}},
         }
 
     return {
         1: {
-            "name": "stage1_scheduler_coarse",
+            "name": "stage1_learning",
             "grid": {
                 "learn_rate": [5e-5, 1e-4, 5e-4],
-                "lr_scheduler_min_lr": [1e-6, 5e-6, 1e-5],
-                "lr_scheduler_patience": [0, 3, 5],
-                "lr_scheduler_factor": [0.1, 0.3, 0.5],
             },
         },
         2: {
-            "name": "stage2_optimizer_coarse",
+            "name": "stage2_lr_scheduler",
             "grid": {
-                "batch_size": [32, 64],
-                "weight_decay": [0.0, 1e-5],
-                "optim_beta1": [0.85, 0.9, 0.95],
-                "optim_beta2": [0.99, 0.999, 0.9999],
+                "lr_scheduler_patience": [0, 2, 4],
+                "lr_scheduler_factor": [0.1, 0.2, 0.3],
+                "lr_scheduler_min_lr": [1e-6],
             },
         },
         3: {
-            "name": "stage3_capacity",
+            "name": "stage3_optimizer",
             "grid": {
-                "hidden_layers": [1, 2, 3, 4],
-                "hidden_dims": [32, 64, 128, 256],
-                "latent_dims": [32, 64, 128, 256],
+                "batch_size": [32, 64, 128],
+                "weight_decay": [0.0, 1e-6, 1e-5],
             },
         },
         4: {
-            "name": "stage4_network",
+            "name": "stage4_capacity",
+            "grid": {
+                "hidden_layers": [2, 3],
+                "hidden_dims": [64, 128, 256],
+                "latent_dims": [64, 128, 256],
+            },
+        },
+        5: {
+            "name": "stage5_network",
             "grid": {
                 "conv_kernel": [3, 5],
                 "activation_function": ["relu", "leaky"],
                 "ascending_channels": [True, False],
             },
         },
-        5: {
-            "name": "stage5_ssim_coarse",
+        6: {
+            "name": "stage6_ssim",
             "grid": {
-                "ssim_loss_weight": np.round(np.linspace(0.0, 1.0, num=11), 1).tolist(),
+                "ssim_loss_weight": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
             },
         },
-        6: {
-            "name": "stage6_best_fine",
+        7: {
+            "name": "stage7_best_fine",
             "grid": {
                 "learn_rate": fine_lr,
-                "lr_scheduler_min_lr": fine_min_lr,
                 "weight_decay": fine_weight_decay,
                 "batch_size": fine_batch_size,
             },
         },
+        8: {
+            "name": "stage8_betas",
+            "grid": {
+                "optim_beta1": [0.85, 0.9, 0.95],
+                "optim_beta2": [0.99, 0.999],
+            },
+        }
     }
-
 
 # --------------------------------------------------
 # HyperparameterSearch
@@ -220,10 +240,19 @@ def get_stage_grids(best_config: dict) -> dict:
 # --------------------------------------------------
 
 class HyperparameterSearch(ModelTrainer):
-    def __init__(self, config, input_folder, output_folder, device, tune_epochs=50, epoch_patience=10):
+    def __init__(
+        self,
+        config,
+        input_folder,
+        output_folder,
+        device,
+        tune_optimizer_steps=800,
+        validate_every_steps=50,
+        tune_patience=10,
+    ):
         """Tunes the model with staged grid search
         To save time, we prune (early stop) trials when the loss is not any better
-        than the current best at the same number of epochs
+        than the current best at the same number of optimizer steps (gradient updates)
 
         After all stages, best_overall_config.json is saved and can be passed
         directly into train_model.py for full training.
@@ -231,8 +260,9 @@ class HyperparameterSearch(ModelTrainer):
 
         super().__init__(config, input_folder, output_folder, device, make_subdirs=False)
 
-        self.tune_epochs = tune_epochs
-        self.epoch_patience = epoch_patience
+        self.tune_optimizer_steps = int(tune_optimizer_steps)
+        self.validate_every_steps = int(validate_every_steps)
+        self.tune_patience = int(tune_patience)
         self.random_seed = pt.initial_seed()
         
         self.base_config = dict(self.config)
@@ -241,11 +271,12 @@ class HyperparameterSearch(ModelTrainer):
         self.best_tuned_params = {}
         self.best_overall_config = dict(self.base_config)
         self.best_overall_loss = float("inf")
-        self.best_overall_epoch = -1
+        self.best_overall_optimizer_step = -1
         
         self.tuning_dir = Path(output_folder)
         self.tuning_dir.mkdir(parents=True, exist_ok=True)
-
+        self._cleanup_trainer(self)
+        SetupDevice.free_memory()
     # --------------------------------------------------
     # Skeleton methods from the original design
     # Contributor: Wen Yu
@@ -269,7 +300,7 @@ class HyperparameterSearch(ModelTrainer):
         save_to_json(path, self.best_stage_config)
         self.logger.info(f"[TUNING] Saved best config after {stage_name} -> {path}")
 
-    def update_best_configs(self, new_params: dict, stage_loss: float, stage_epoch):
+    def update_best_configs(self, new_params: dict, stage_loss: float, stage_optimizer_step: int):
         """Carry best settings forward; also update global best if improved."""
         self.best_stage_config.update(new_params)
 
@@ -279,17 +310,21 @@ class HyperparameterSearch(ModelTrainer):
 
         if stage_loss < self.best_overall_loss:
             self.best_overall_loss = stage_loss
-            self.best_overall_epoch = stage_epoch
-            self.logger.info(f"[TUNING] New global best loss = {stage_loss:.8f} at epoch = {stage_epoch}")
+            self.best_overall_optimizer_step = int(stage_optimizer_step)
+            self.logger.info(
+                f"[TUNING] New global best loss = {stage_loss:.8f} "
+                f"at optimizer_step = {self.best_overall_optimizer_step}"
+            )
 
-    def override_best_(self, new_params: dict, new_loss: float, new_epoch: int):
-        """Hard-override best configs and loss (e.g. when resuming)."""
+
+    def override_best_(self, new_params: dict, new_loss: float, new_optimizer_step: int):
+        """Hard-override best configs and loss, e.g. when resuming."""
         self.best_stage_config.update(new_params)
         self.best_tuned_params.update(new_params)
         self.best_overall_config = dict(self.base_config)
         self.best_overall_config.update(self.best_tuned_params)
-        self.best_overall_loss = new_loss
-        self.best_overall_epoch = new_epoch
+        self.best_overall_loss = float(new_loss)
+        self.best_overall_optimizer_step = int(new_optimizer_step)
 
     def load_best_config(self, path: str):
         """Load a previously saved best_config JSON to resume tuning."""
@@ -318,7 +353,8 @@ class HyperparameterSearch(ModelTrainer):
         """
         cfg = {k: (v[0] if isinstance(v, (list, tuple)) else v)
                for k, v in self.best_stage_config.items()}
-        cfg["num_epochs"] = self.tune_epochs
+        cfg["num_epochs"] = max(1, int(self.base_config.get("num_epochs", 50)))
+        cfg["earlystop_patience"] = self.tune_patience
         cfg.update(overrides)
         return cfg
 
@@ -351,7 +387,7 @@ class HyperparameterSearch(ModelTrainer):
             "best_tuned_params": self.best_tuned_params,
             "best_overall_config": self.best_overall_config,
             "best_overall_loss": self.best_overall_loss,
-            "best_overall_epoch": self.best_overall_epoch,
+            "best_overall_optimizer_step": self.best_overall_optimizer_step,
         }
         save_to_json(self._resume_state_path(), state)
         self.logger.info(f"[TUNING] Saved resume state -> {self._resume_state_path()}")
@@ -368,15 +404,22 @@ class HyperparameterSearch(ModelTrainer):
         self.best_tuned_params = dict(state.get("best_tuned_params", self.best_tuned_params))
         self.best_overall_config = dict(state.get("best_overall_config", self.best_overall_config))
         self.best_overall_loss = float(state.get("best_overall_loss", self.best_overall_loss))
-        self.best_overall_epoch = int(state.get("best_overall_epoch", self.best_overall_epoch))
+
+        self.best_overall_optimizer_step = int(
+            state.get(
+                "best_overall_optimizer_step",
+                state.get("best_overall_epoch", self.best_overall_optimizer_step),
+            )
+        )
 
         self.logger.info(
             f"[TUNING] Loaded resume state <- {path} "
             f"last_stage={state.get('last_completed_stage_id', 'none')} "
             f"best_loss={self.best_overall_loss:.8f} "
-            f"best_epoch={self.best_overall_epoch}"
+            f"best_optimizer_step={self.best_overall_optimizer_step}"
         )
         return state
+    
 
     def _existing_stage_state(self, stage_name: str):
         rows = self._read_stage_results(stage_name)
@@ -385,7 +428,7 @@ class HyperparameterSearch(ModelTrainer):
         best_loss = float("inf")
         best_params = {}
         best_trial_id = ""
-        best_so_far_epoch = 0
+        best_so_far_optimizer_step = 0
 
         for row in rows:
             hyper_params = row.get("hyper_params", "")
@@ -406,11 +449,11 @@ class HyperparameterSearch(ModelTrainer):
                 best_params = json.loads(str(hyper_params)) if pd.notna(hyper_params) and hyper_params != "" else {}
                 best_trial_id = str(row.get("trial_id", ""))
                 try:
-                    best_so_far_epoch = int(row.get("best_so_far_epoch", 0))
+                    best_so_far_optimizer_step = int(row.get("best_so_far_optimizer_step", 0))
                 except (TypeError, ValueError):
-                    best_so_far_epoch = 0
+                    best_so_far_optimizer_step = 0
 
-        return completed, best_loss, best_params, best_trial_id, best_so_far_epoch
+        return completed, best_loss, best_params, best_trial_id, best_so_far_optimizer_step
     
     def _append_stage_result(self, stage_name: str, row: dict):
         csv_path = self._stage_csv_path(stage_name)
@@ -422,7 +465,10 @@ class HyperparameterSearch(ModelTrainer):
             "loss_value",
             "best_so_far_trial",
             "best_so_far_loss",
-            "best_so_far_epoch",
+            "best_so_far_optimizer_step",
+            "trial_total_seconds",
+            "trial_peak_ram_mb",
+            "trial_peak_vram_mb",
             "hyper_params",
             "config_path",
             "status",
@@ -442,49 +488,187 @@ class HyperparameterSearch(ModelTrainer):
 
         combined_df.to_csv(csv_path, index=False)
 
+    def _cleanup_trainer(self, trainer):
+        if trainer is None:
+            return
 
-    def _run_trial_with_pruning(self, trainer: ModelTrainer, current_best_loss: float, current_best_epoch: int):
+        try:
+            for loader_name in ("train_loader", "valid_loader", "test_loader"):
+                loader = getattr(trainer, loader_name, None)
+                dataset = getattr(loader, "dataset", None)
+
+                file_obj = getattr(dataset, "_file", None)
+                if file_obj is not None:
+                    file_obj.close()
+                    dataset._file = None
+
+            if hasattr(trainer, "mae_model"):
+                trainer.mae_model.to("cpu")
+
+            for attr in (
+                "mae_model",
+                "optimizer",
+                "scheduler",
+                "criterion",
+                "best_model_state",
+                "prepare_datasets",
+                "train_loader",
+                "valid_loader",
+                "test_loader",
+                "transform",
+                "history",
+            ):
+                if hasattr(trainer, attr):
+                    delattr(trainer, attr)
+
+        finally:
+            SetupDevice.free_memory()
+
+    def _run_trial_with_pruning(
+        self,
+        trainer: ModelTrainer,
+        current_best_loss: float,
+        current_best_optimizer_step: int,
+    ):
+
+        trainer.reset_trial_memory_peak()
         trainer.mae_model = trainer.mae_model.to(trainer.device)
+        trainer.update_trial_memory_peak()
+        num_epochs = trainer.config["num_epochs"]
+        total_batches = len(trainer.train_loader)
 
-        for epoch in range(1, trainer.config["num_epochs"] + 1):
-            trainer.train(trainer.mae_model, epoch=epoch)
-            valid_metrics = trainer.evaluate(trainer.mae_model, is_validation=True, epoch=epoch)
+        if total_batches < 1:
+            raise ValueError("train_loader has no batches; cannot tune.")
+
+        total_possible_optimizer_steps = total_batches * num_epochs
+        min_optimizer_steps = total_batches
+
+        optimizer_step_budget = min(
+            total_possible_optimizer_steps,
+            max(min_optimizer_steps, int(self.tune_optimizer_steps)),
+        )
+
+        validate_every_steps = max(1, int(self.validate_every_steps))
+
+        train_iter = iter(enumerate(trainer.train_loader, start=1))
+
+        optimizer_steps_done = 0
+        epoch = 1
+        validation_checks = 0
+
+        best_loss = float("inf")
+        best_optimizer_step = 0
+        not_improved_count = 0
+        pruned = False
+
+        if np.isfinite(current_best_loss) and current_best_optimizer_step > 0:
+            prune_after_step = min(
+                optimizer_step_budget,
+                current_best_optimizer_step + self.tune_patience * validate_every_steps,
+            )
+        else:
+            prune_after_step = None
+
+        while epoch <= num_epochs and optimizer_steps_done < optimizer_step_budget:
+            remaining_steps = optimizer_step_budget - optimizer_steps_done
+            steps_this_round = min(validate_every_steps, remaining_steps)
+
+            train_metrics, train_iter, epochs_completed = trainer.train_steps(
+                trainer.mae_model,
+                train_iter=train_iter,
+                max_optimizer_steps=steps_this_round,
+            )
+
+            optimizer_steps_done += int(train_metrics["optimizer_steps"])
+            epoch = min(num_epochs, epoch + epochs_completed)
+            validation_checks += 1
+
+            epoch_progress = round(optimizer_steps_done / max(1, total_batches), 3)
+
+            valid_metrics = trainer.evaluate(
+                trainer.mae_model,
+                is_validation=True,
+                epoch=epoch_progress,
+                optimizer_step=optimizer_steps_done
+            )
 
             valid_loss = float(valid_metrics["objective_loss"])
             trainer.scheduler_step(valid_loss)
-            trainer.check_improvement(valid_loss, epoch)
+            trainer.update_trial_memory_peak()
 
-            if np.isfinite(current_best_loss) and current_best_epoch > 0:
-                prune_epoch = current_best_epoch + self.epoch_patience
+            if valid_loss < (best_loss - trainer.min_delta):
+                best_loss = valid_loss
+                best_optimizer_step = optimizer_steps_done
+                not_improved_count = 0
+            else:
+                not_improved_count += 1
 
-                if epoch >= prune_epoch and trainer.best_valid_loss >= current_best_loss:
-                    return trainer.best_valid_loss, trainer.best_model_epoch, True
+            self.logger.info(
+                f"[TUNE] check={validation_checks} "
+                f"optimizer_step={optimizer_steps_done}/{optimizer_step_budget} "
+                f"valid_loss={valid_loss:.8f} "
+                f"best_loss={best_loss:.8f} "
+                f"current_best_loss={current_best_loss:.8f}"
+            )
 
-            if trainer._should_earlystop():
+            if (
+                prune_after_step is not None
+                and optimizer_steps_done >= prune_after_step
+                and best_loss >= current_best_loss
+            ):
+                pruned = True
+                self.logger.info(
+                    f"[TUNE] Pruned trial at optimizer_step={optimizer_steps_done}. "
+                    f"best_loss={best_loss:.8f} did not beat current_best_loss={current_best_loss:.8f}"
+                )
                 break
 
-        return trainer.best_valid_loss, trainer.best_model_epoch, False
+            if trainer.earlystop and not_improved_count >= trainer.patience:
+                self.logger.info(
+                    f"[TUNE] Early stopped trial at optimizer_step={optimizer_steps_done}. "
+                    f"best_loss={best_loss:.8f}"
+                )
+                break
+
+        trainer.evaluate(
+            trainer.mae_model,
+            is_validation=True,
+            epoch="trial_end",
+            optimizer_step=optimizer_steps_done,
+        )
+
+        memory_stats = trainer.log_trial_memory("trial_end")
+
+        return best_loss, best_optimizer_step, memory_stats, pruned
 
     # ==================================================
     # CONTRIBUTION END: sanity logging and trial pruning
     # ==================================================
 
     # --------------------------------------------------
-    # run_trials: generic grid search loop with state tracking
+    # run_trials: generic grid search loop with state tracking 
     # Contributor: Wen Yu, Leslie Horace (Tested + Extended)
     # --------------------------------------------------
 
     def run_stage(self, stage_id: int, param_grid: dict, stage_name: str) -> tuple:
         combos = _grid_combinations(param_grid)
-        completed, best_loss, best_params, best_trial_id, best_so_far_epoch = self._existing_stage_state(stage_name)
-
+        completed, best_loss, best_params, best_trial_id, best_so_far_optimizer_step = self._existing_stage_state(stage_name)
+    
+        if all(self._get_hyper_params(params) in completed for params in combos):
+            self.logger.info(
+                f"[{stage_name}] all {len(combos)} trials already completed; "
+                f"best_trial={best_trial_id}, "
+                f"best_loss={best_loss:.8f}, "
+                f"best_optimizer_step={best_so_far_optimizer_step}"
+            )
+            return best_params, best_loss, best_trial_id, best_so_far_optimizer_step
+        
         running_best_loss = self.best_overall_loss
-        running_best_epoch = self.best_overall_epoch
+        running_best_optimizer_step = self.best_overall_optimizer_step
 
-        if np.isfinite(best_loss) and (
-            not np.isfinite(running_best_loss) or best_loss < running_best_loss):
+        if np.isfinite(best_loss) and (not np.isfinite(running_best_loss) or best_loss < running_best_loss):
             running_best_loss = best_loss
-            running_best_epoch = best_so_far_epoch
+            running_best_optimizer_step = best_so_far_optimizer_step
 
         for i, params in enumerate(combos, 1):
             trial_id = f"{i:04d}"
@@ -499,31 +683,40 @@ class HyperparameterSearch(ModelTrainer):
             error_message = ""
             config_path = ""
 
+            trainer = None
+            memory_stats = {}
+            start_time = time.perf_counter()
+
             try:
                 trainer = self.make_trainer(cfg, label)
+                config_path = str(trainer.output_folder / "resolved_train_config.json")
 
-                loss, best_epoch, pruned = self._run_trial_with_pruning(
+                loss, best_optimizer_step, memory_stats, pruned = self._run_trial_with_pruning(
                     trainer=trainer,
                     current_best_loss=running_best_loss,
-                    current_best_epoch=running_best_epoch,
+                    current_best_optimizer_step=running_best_optimizer_step,
                 )
                 status = "pruned" if pruned else "complete"
 
             except Exception as exc:
                 loss = float("inf")
-                best_epoch = 0
+                best_optimizer_step = 0
                 status = "failed"
                 error_message = str(exc)
+
+            finally:
+                self._cleanup_trainer(trainer)
+                trainer = None
 
             if np.isfinite(loss) and loss < best_loss:
                 best_loss = loss
                 best_params = params
                 best_trial_id = trial_id
-                best_so_far_epoch = best_epoch
+                best_so_far_optimizer_step = best_optimizer_step
 
             if np.isfinite(loss) and loss < running_best_loss:
                 running_best_loss = loss
-                running_best_epoch = best_epoch
+                running_best_optimizer_step = best_optimizer_step
 
             self._append_stage_result(
                 stage_name,
@@ -535,20 +728,36 @@ class HyperparameterSearch(ModelTrainer):
                     "loss_value": f"{loss:.8f}" if np.isfinite(loss) else "inf",
                     "best_so_far_trial": best_trial_id,
                     "best_so_far_loss": f"{best_loss:.8f}" if np.isfinite(best_loss) else "inf",
-                    "best_so_far_epoch": best_so_far_epoch,
+                    "best_so_far_optimizer_step": best_so_far_optimizer_step,
+                    "trial_total_seconds": f"{time.perf_counter() - start_time:.2f}",
+                    "trial_peak_ram_mb": (
+                        f"{memory_stats['trial_peak_ram_mb']:.1f}"
+                        if "trial_peak_ram_mb" in memory_stats else ""
+                    ),
+                    "trial_peak_vram_mb": (
+                        f"{memory_stats['trial_peak_vram_mb']:.1f}"
+                        if "trial_peak_vram_mb" in memory_stats else ""
+                    ),
                     "hyper_params": hyper_params,
                     "config_path": config_path,
                     "status": status,
                     "error_message": error_message,
+
                 },
             )
 
-            self.logger.info(
-                f"[{stage_name}] trial={trial_id} status={status} "
-                f"loss={loss:.8f} best_trial={best_trial_id} best_loss={best_loss:.8f}"
-            )
+        self.logger.info(
+            f"[{stage_name}] trial={trial_id} status={status} "
+            f"loss={loss:.8f} "
+            f"best_trial={best_trial_id} "
+            f"best_loss={best_loss:.8f} "
+            f"best_optimizer_step={best_so_far_optimizer_step} "
+            f"trial_seconds={time.perf_counter() - start_time:.2f} "
+            f"peak_ram_mb={memory_stats.get('trial_peak_ram_mb', '')} "
+            f"peak_vram_mb={memory_stats.get('trial_peak_vram_mb', '')}"
+        )
 
-        return best_params, best_loss, best_trial_id, best_so_far_epoch
+        return best_params, best_loss, best_trial_id, best_so_far_optimizer_step
 
     # --------------------------------------------------
     # run: top-level entry point with auto state tracking
@@ -571,19 +780,38 @@ class HyperparameterSearch(ModelTrainer):
             stage_name = stage_defs[stage_id]["name"]
             param_grid = stage_defs[stage_id]["grid"]
 
-            best_params, best_loss, best_trial_id, best_epoch = self.run_stage(stage_id, param_grid, stage_name)
-            self.logger.info(
-                f"[Stage {stage_id}] name={stage_name} "
-                f"best_trial={best_trial_id} best_loss={best_loss:.8f} best_params={best_params}"
+            best_params, best_loss, best_trial_id, best_optimizer_step = self.run_stage(
+                stage_id,
+                param_grid,
+                stage_name,
             )
 
-            self.update_best_configs(best_params, best_loss, best_epoch)
+            self.logger.info(
+                f"[Stage {stage_id}] name={stage_name} "
+                f"best_trial={best_trial_id} "
+                f"best_loss={best_loss:.8f} "
+                f"best_optimizer_step={best_optimizer_step} "
+                f"best_params={best_params}"
+            )
+
+            self.update_best_configs(best_params, best_loss, best_optimizer_step)
             self.save_best_so_far(stage_name)
             self.save_resume_state(stage_id, stage_name)
             self.logger.info(f"[Overall] best_trial_id={best_trial_id}, best_loss={self.best_overall_loss:.8f}")
 
         best_tuned_params_path = self.output_folder / "best_tuned_params.json"
         save_to_json(best_tuned_params_path, self.best_tuned_params)
+
+        self.best_overall_config.update({
+            "num_epochs": 100,
+            "enable_earlystop": True,
+            "earlystop_patience": 12,
+            "earlystop_min_delta": 0.0,
+            "log_epoch_frequency": 1,
+            "log_batch_frequency": 0,
+            "plot_last_batch_frequency": 1000,
+            "plot_last_batch_limit": 1
+        })
 
         best_overall_path = self.output_folder / "best_overall_config.json"
         save_to_json(best_overall_path, self.best_overall_config)
@@ -634,10 +862,10 @@ def main(args):
         input_folder=args.input_folder,
         output_folder=args.output_folder,
         device=device,
-        tune_epochs = args.tune_epochs,
-        epoch_patience=args.epoch_patience
+        tune_optimizer_steps=args.tune_optimizer_steps,
+        validate_every_steps=args.validate_every_steps,
+        tune_patience=args.tune_patience,
     )
-
     search.tune_model()
 
 
@@ -655,18 +883,24 @@ if __name__ == "__main__":
 # Run fake test grid to make sure it works
 '''
 python src/tune_model.py \
-    --input-folder "data/preprocessed/galaxiesml_tiny" \
-    --output-folder experiments/tune_debug_grid \
-    --num-cores 2 \
-    --gpu-memory-fraction 0.9 \
-    --debug
+--input-folder "data/preprocessed/galaxiesml_tiny" \
+--output-folder experiments/tune_debug_small \
+--gpu-memory-fraction 0.9 \
+--num-cores 2 \
+--tune-optimizer-steps 250 \
+--validate-every-steps 10 \
+--tune-patience 5 \
+--debug
 '''
 
 # Run actual tuning grids with your preprocessed mask 
 '''
 python src/tune_model.py \
-    --input-folder "data/preprocessed/galaxiesml_medium" \
-    --output-folder experiments/tune_mae_<first_name>_<mask_ratio>  \
-    --num-cores 4 \
-    --gpu-memory-fraction 0.9
+--input-folder "data/preprocessed/galaxiesml_small" \
+--output-folder experiments/tune_mae_<first_name>_<mask_ratio>  \
+--gpu-memory-fraction 0.9
+--num-cores 5 \
+--tune-optimizer-steps 1000
+--validate-every-steps 100
+--tune-patience 5
 '''

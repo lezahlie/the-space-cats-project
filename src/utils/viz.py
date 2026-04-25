@@ -122,6 +122,7 @@ def plot_single_sample(
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches="tight")
+    fig.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -177,60 +178,197 @@ def plot_image_samples(
 
     return saved_paths
 
+def make_integer_ticks(values, max_ticks=10):
+    values = sorted(set(int(round(v)) for v in values))
+
+    if not values:
+        return []
+
+    if len(values) <= max_ticks:
+        return values
+
+    tick_idx = np.linspace(0, len(values) - 1, num=max_ticks)
+    tick_idx = np.unique(np.rint(tick_idx).astype(int))
+
+    ticks = [values[i] for i in tick_idx]
+
+    if ticks[0] != values[0]:
+        ticks.insert(0, values[0])
+    if ticks[-1] != values[-1]:
+        ticks.append(values[-1])
+
+    return sorted(set(ticks))
 
 def plot_learning_curves(history, save_path):
     if not history:
         return
 
-    epochs = [x["epoch"] for x in history]
+    def get_train_metrics(row):
+        return row.get("training_metrics", row.get("train", {}))
 
-    train_loss = [x["train"]["objective_loss"] for x in history]
-    valid_loss = [x["validation"]["objective_loss"] for x in history]
+    def get_valid_metrics(row):
+        return row.get("validation_metrics", row.get("validation", {}))
 
-    train_smooth_l1 = [x["train"]["smooth_l1"] for x in history]
-    valid_smooth_l1 = [x["validation"]["smooth_l1"] for x in history]
+    def make_integer_ticks(values, max_ticks=12):
+        values = sorted(set(int(round(v)) for v in values))
 
-    train_ssim = [x["train"]["ssim_loss"] for x in history]
-    valid_ssim = [x["validation"]["ssim_loss"] for x in history]
+        if not values:
+            return []
 
-    title_fs = 22
-    label_fs = 18
-    tick_fs = 16
-    legend_fs = 14
-    line_w = 2.5
+        if len(values) <= max_ticks:
+            return values
 
-    train_color = "royalblue"
-    valid_color = "firebrick"
+        lo = values[0]
+        hi = values[-1]
 
-    fig, axes = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+        if lo == hi:
+            return [lo]
+
+        step = max(1, (hi - lo + max_ticks - 2) // (max_ticks - 1))
+        ticks = list(range(lo, hi + 1, step))
+
+        if ticks[-1] != hi:
+            ticks.append(hi)
+
+        return ticks
+
+    use_optimizer_steps = any("optimizer_step" in row for row in history)
+
+    if use_optimizer_steps:
+        x_values = [int(row["optimizer_step"]) for row in history]
+        x_label = "Optimizer Step"
+    else:
+        x_values = [int(row["epoch"]) for row in history]
+        x_label = "Epoch"
+
+    train_loss = [get_train_metrics(row)["objective_loss"] for row in history]
+    valid_loss = [get_valid_metrics(row)["objective_loss"] for row in history]
+
+    train_smooth_l1 = [get_train_metrics(row)["smooth_l1"] for row in history]
+    valid_smooth_l1 = [get_valid_metrics(row)["smooth_l1"] for row in history]
+
+    train_ssim = [get_train_metrics(row)["ssim_loss"] for row in history]
+    valid_ssim = [get_valid_metrics(row)["ssim_loss"] for row in history]
+
+    title_fs = 16
+    label_fs = 14
+    tick_fs = 12
+    legend_fs = 12
+    line_w = 2.0
+    marker_size = 5
+
+    objective_train_color = "royalblue"
+    objective_valid_color = "firebrick"
+
+    smooth_train_color = "mediumblue"
+    smooth_valid_color = "darkviolet"
+
+    ssim_train_color = "dodgerblue"
+    ssim_valid_color = "mediumvioletred"
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     for ax in axes:
         ax.tick_params(axis="both", labelsize=tick_fs)
-        ax.grid(True, linestyle="--", linewidth=0.8, alpha=0.6)
+        ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
 
-    axes[0].plot(epochs, train_loss, label="Training", color=train_color, linewidth=line_w)
-    axes[0].plot(epochs, valid_loss, label="Validation", color=valid_color, linewidth=line_w)
-    axes[0].set_ylabel("Overall Loss", fontsize=label_fs)
-    axes[0].set_title("Learning Curves", fontsize=title_fs, pad=14)
-    axes[0].legend(fontsize=legend_fs, frameon=False)
+    axes[0].plot(
+        x_values,
+        train_loss,
+        label="Train Objective",
+        color=objective_train_color,
+        linewidth=line_w,
+        marker="o",
+        markersize=marker_size,
+    )
+    axes[0].plot(
+        x_values,
+        valid_loss,
+        label="Valid Objective",
+        color=objective_valid_color,
+        linewidth=line_w,
+        marker="o",
+        markersize=marker_size,
+    )
+    axes[0].set_ylabel("Objective", fontsize=label_fs)
+    axes[0].set_title("Learning Curves", fontsize=title_fs, pad=8)
+    axes[0].legend(fontsize=legend_fs, frameon=False, loc="best")
 
-    axes[1].plot(epochs, train_smooth_l1, label="Training", color=train_color, linewidth=line_w)
-    axes[1].plot(epochs, valid_smooth_l1, label="Validation", color=valid_color, linewidth=line_w)
-    axes[1].set_ylabel("Smooth-L1 Loss", fontsize=label_fs)
-    axes[1].legend(fontsize=legend_fs, frameon=False)
+    ax_loss = axes[1]
+    ax_ssim = ax_loss.twinx()
 
-    axes[2].plot(epochs, train_ssim, label="Training", color=train_color, linewidth=line_w)
-    axes[2].plot(epochs, valid_ssim, label="Validation", color=valid_color, linewidth=line_w)
-    axes[2].set_xlabel("Epoch", fontsize=label_fs)
-    axes[2].set_ylabel("1-SSIM Loss", fontsize=label_fs)
-    axes[2].legend(fontsize=legend_fs, frameon=False)
-    axes[2].set_xticks(epochs)
-    axes[2].set_xticklabels([str(e) for e in epochs], fontsize=tick_fs)
+    ax_loss.plot(
+        x_values,
+        train_smooth_l1,
+        label="Train Smooth-L1",
+        color=smooth_train_color,
+        linewidth=line_w,
+        marker="o",
+        markersize=marker_size,
+    )
+    ax_loss.plot(
+        x_values,
+        valid_smooth_l1,
+        label="Valid Smooth-L1",
+        color=smooth_valid_color,
+        linewidth=line_w,
+        marker="o",
+        markersize=marker_size,
+    )
+
+    ax_ssim.plot(
+        x_values,
+        train_ssim,
+        label="Train 1-SSIM",
+        color=ssim_train_color,
+        linewidth=line_w,
+        linestyle="--",
+        marker="o",
+        markersize=marker_size,
+    )
+    ax_ssim.plot(
+        x_values,
+        valid_ssim,
+        label="Valid 1-SSIM",
+        color=ssim_valid_color,
+        linewidth=line_w,
+        linestyle="--",
+        marker="o",
+        markersize=marker_size,
+    )
+
+    x_ticks = make_integer_ticks(x_values, max_ticks=12)
+    x_ticks = make_integer_ticks(x_values, max_ticks=10)
+
+    axes[-1].set_xticks(x_ticks)
+    axes[-1].set_xticklabels(
+        [str(tick) for tick in x_ticks],
+        fontsize=tick_fs,
+        rotation=20,
+        ha="right",
+    )
+
+    ax_loss.set_xlabel(x_label, fontsize=label_fs)
+    ax_loss.set_ylabel("Smooth-L1", fontsize=label_fs)
+    ax_ssim.set_ylabel("1-SSIM", fontsize=label_fs)
+    ax_ssim.set_ylim(0.0, 1.0)
+
+    lines_1, labels_1 = ax_loss.get_legend_handles_labels()
+    lines_2, labels_2 = ax_ssim.get_legend_handles_labels()
+    ax_loss.legend(
+        lines_1 + lines_2,
+        labels_1 + labels_2,
+        fontsize=legend_fs,
+        frameon=False,
+        loc="best",
+        ncol=2,
+    )
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
+
     fig.tight_layout()
-    fig.savefig(save_path, bbox_inches="tight", dpi=200)
+    fig.savefig(save_path, bbox_inches="tight", dpi=300)
     plt.close(fig)
 
 # ==================================================

@@ -126,28 +126,28 @@ tar -xvf path/to/galaxiesml_<size>.tar.gz -C data/
 ```
 
 - `galaxiesml_tiny.tar.gz`: Good for debugging issues and just getting stuff working
-  - `5x64x64_training_reduced_tiny.hdf5`: N=2500
+  - `5x64x64_training_reduced_tiny.hdf5`: N=2000
   - `5x64x64_validation_reduced_tiny.hdf5`: N=500
-  - `5x64x64_testing_reduced_tiny.hdf5`: N=250
-  - total: N=3250
+  - `5x64x64_testing_reduced_tiny.hdf5`: N=500
+  - total: N=3000
 
 - `galaxiesml_small.tar.gz`: Good for testing training/evaluation and tuning workflows
   - `5x64x64_training_reduced_small.hdf5`: N=5000
   - `5x64x64_validation_reduced_small.hdf5`: N=1000
-  - `5x64x64_testing_reduced_small.hdf5`: N=500
-  - total: N=6500
+  - `5x64x64_testing_reduced_small.hdf5`: N=1000
+  - total: N=7000
 
 - `galaxiesml_medium.tar.gz`: Good for final experimentation unless large fits
   - `5x64x64_training_reduced_medium.hdf5`: N=10000
-  - `5x64x64_validation_reduced_medium.hdf5`: N=2000
-  - `5x64x64_testing_reduced_medium.hdf5`: N=1000
-  - total: N=13000
+  - `5x64x64_validation_reduced_medium.hdf5`: N=2500
+  - `5x64x64_testing_reduced_medium.hdf5`: N=2500
+  - total: N=15000
 
 - `galaxiesml_large.tar.gz`: Ideal size for final experimentation
   - `5x64x64_training_reduced_large.hdf5`: N=20000
-  - `5x64x64_validation_reduced_large.hdf5`: N=4000
-  - `5x64x64_testing_reduced_large.hdf5`: N=2000
-  - total: N=26000
+  - `5x64x64_validation_reduced_large.hdf5`: N=5000
+  - `5x64x64_testing_reduced_large.hdf5`: N=5000
+  - total: N=30000
 
 > - Each reduced dataset is packaged as tar gzip archive containing reduced training, validation, and testing HDF5 files
 > - In addition, each archive includes a metadata text file describing the internal HDF5 structure
@@ -249,7 +249,7 @@ Dataset download page: https://zenodo.org/records/11117528
     ```bash
     cd "/path/to/the-space-cats-project"
 
-    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
+    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_tiny.tar.gz" -C "data/"
     ```
 
 2. Test preprocessing works
@@ -258,7 +258,7 @@ Dataset download page: https://zenodo.org/records/11117528
     python src/preprocess_data.py \
     --input-folder "data/galaxiesml_tiny" \
     --output-folder "data/preprocessed" \
-    --num-cores 2 \
+    --num-cores 3 \
     --mask-ratio 0.5 \
     --debug
     ```
@@ -268,9 +268,12 @@ Dataset download page: https://zenodo.org/records/11117528
     ```bash
     python src/tune_model.py \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
-    --output-folder "experiments/tune_debug_grid" \
+    --output-folder "experiments/tune_debug_tiny" \
     --gpu-memory-fraction 0.9 \
-    --num-cores <num_cores> \
+    --num-cores 3 \
+    --tune-optimizer-steps 100 \
+    --validate-every-steps 20 \
+    --tune-patience 2 \
     --debug
     ```
 
@@ -282,7 +285,11 @@ Dataset download page: https://zenodo.org/records/11117528
     --input-folder "data/preprocessed/galaxiesml_tiny" \
     --output-folder "experiments/train_galaxiesml_tiny" \
     --gpu-memory-fraction 0.9 \
-    --num-cores <num_cores> \
+    --num-cores 5 \
+    --max-optimizer-steps 100 \
+    --validate-every-steps 20 \
+    --max-wallclock-hours 1 \
+    --checkpoint-buffer-minutes 45
     --debug
     ```
 
@@ -292,17 +299,25 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### D. Run Preprocessing
 
-1. Download `galaxiesml_medium.tar.gz` and `galaxiesml_large.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQCavSjOG4EzSa62o0fZPaPJAUdR4WKUkWPAAOOk1E-g6YI?e=1SnoPD
+1. Download `galaxiesml_small.tar.gz` and `galaxiesml_medium.tar.gz` from: https://gtvault-my.sharepoint.com/:u:/g/personal/lhorace3_gatech_edu/IQCavSjOG4EzSa62o0fZPaPJAUdR4WKUkWPAAOOk1E-g6YI?e=1SnoPD
 
     Extract it to the data folder
 
     ```bash
     cd "/path/to/the-space-cats-project"
+    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_small.tar.gz" -C "data/"
     mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_medium.tar.gz" -C "data/"
-    mkdir -p "data" && tar -xzf "/path/to/downloads/galaxiesml_large.tar.gz" -C "data/"
     ```
 
 2. Preprocess with your assigned mask ratio 
+
+    ```bash
+    python src/preprocess_data.py \
+    --input-folder "data/galaxiesml_small" \
+    --output-folder "data/preprocessed" \
+    --num-cores <num_cores> \
+    --mask-ratio <mask_ratio>
+    ```
 
     ```bash
     python src/preprocess_data.py \
@@ -312,14 +327,6 @@ Dataset download page: https://zenodo.org/records/11117528
     --mask-ratio <mask_ratio>
     ```
 
-    ```bash
-    python src/preprocess_data.py \
-    --input-folder "data/galaxiesml_large" \
-    --output-folder "data/preprocessed" \
-    --num-cores <num_cores> \
-    --mask-ratio <mask_ratio>
-    ```
-    
     > Replace <mask_ratio> with:
     >- Leslie: `mask_ratio = 0.0`
     >- Charlie: `mask_ratio = 0.25`
@@ -330,18 +337,37 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### Important Notes: 
 
-1. `tune_model.py` autodetects and recovers completed stages and trials from logs
-2. Each trial runs for at most 50 epochs
+1. `tune_model.py` autodetects and recovers completed stages and trials from saved CSV logs.
+2. Each trial runs for at most `--tune-optimizer-steps` optimizer updates, unless capped earlier by `num_epochs * batches_per_epoch`.
 3. A trial stops early if either of these happens:
-   - its validation loss does not improve for 5 consecutive epochs, or
-   - it does not beat the current best validation loss within 10 epochs of the best trial's best epoch
+   - its validation loss does not improve for `--tune-patience` consecutive validation checks, or
+   - after a current best exists, it fails to beat the current best validation loss within `tune_patience * validate_every_steps` optimizer updates after the current best trial's best optimizer step.
+4. With the recommended tuning command:
+   - `--tune-optimizer-steps 750`
+   - `--validate-every-steps 75`
+   - `--tune-patience 5`
+5. The staged tuning grid is:
+   - Stage 1: learning rate = `4` trials
+   - Stage 2: learning-rate scheduler = `9` trials
+   - Stage 3: optimizer = `9` trials
+   - Stage 4: model capacity = `18` trials
+   - Stage 5: network structure = `8` trials
+   - Stage 6: SSIM loss weight = `6` trials
+   - Stage 7: fine grained search around best stage 1 and 3 = up to `27` trials
+   - Stage 8: AdamW betas = `6` trials
+6. In the worst case, this tuning grid performs:
+   - `87` trials x `750` optimizer steps = `65,250` optimizer steps
+   - `87` trials x `10` validation checks = `870` validation checks
 
 ```bash
 python src/tune_model.py \
---input-folder "data/preprocessed/galaxiesml_medium" \
---output-folder "experiments/tune_mae_<first_name>_<mask_ratio>" \
+--input-folder "data/preprocessed/galaxiesml_small" \
+--output-folder "experiments/tune_mae_small_leslie_mask0" \
 --gpu-memory-fraction 0.9 \
---num-cores <num_cores>
+--num-cores 5 \
+--tune-optimizer-steps 750 \
+--validate-every-steps 75 \
+--tune-patience 5
 ```
 > - Do not pass `--debug` or it will NOT run the full tuning grid
 > - Replace `<your_name>` and `<mask_ratio>` in `[--output-folder]` in case we need to share our results
@@ -354,7 +380,7 @@ python src/tune_model.py \
 1. Copy the best overall config from tuning to the configs folder
 
     ```bash
-    cp -p "experiments/tune_mae_<first_name>_<mask_ratio>/best_overall_config.json" "configs/best_config_<first_name>_<mask_ratio>.json"
+    cp -p "experiments/tune_mae_small_<first_name>_<mask_ratio>/best_overall_config.json" "configs/best_config_<first_name>_<mask_ratio>.json"
     ```
     > Please put your <first_name> and <mask_ratio> and commit the new config to github
 
@@ -363,16 +389,22 @@ python src/tune_model.py \
     ```bash
     python src/train_model.py \
     --config-file "configs/best_config_<first_name>_<mask_ratio>.json" \
-    --input-folder "data/preprocessed/galaxiesml_large" \
-    --output-folder "experiments/train_mae_<first_name>_<mask_ratio>" \
+    --input-folder "data/preprocessed/galaxiesml_medium" \
+    --output-folder "experiments/train_mae_medium_<first_name>_<mask_ratio>" \
     --gpu-memory-fraction 0.9 \
-    --num-cores <num_cores>
+    --num-cores 5 \
+    --max-optimizer-steps 50000 \
+    --validate-every-steps 200 \
+    --max-wallclock-hours 16 \
+    --checkpoint-buffer-minutes 60
     ```
 
     > Notes 
     > - This will run for more epochs with early stopping
     > - Save outputs for downstream regression and analysis
 
+3. If the medium dataset doesn't work then everyone needs to use the small instead
+4. 
 ### G. Handling downstream predictions
 
 1. Predict redshift with reconstructions (Chris)
@@ -380,9 +412,9 @@ python src/tune_model.py \
 ```python
 from src.utils import GalaxyMLDataset
 
-train_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.hdf5"
-valid_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.hdf5"
-testing_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.hdf5"
+train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.hdf5"
+valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.hdf5"
+test_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.hdf5"
 
 train_data = GalaxiesMLDataset(train_path, input_key = "y_recon_image", target_key = "y_specz_redshift")
 valid_data = GalaxiesMLDataset(valid_path, input_key = "y_recon_image", target_key = "y_specz_redshift")
@@ -395,9 +427,9 @@ test_data = GalaxiesMLDataset(test_path, input_key = "y_recon_image", target_key
 
 from src.utils import GalaxyMLDataset
 
-train_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.pth"
-valid_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.pth"
-testing_path = "./experiments/train_mae_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.pth"
+train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.pth"
+valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.pth"
+test_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.pth"
 
 train_data = GalaxiesMLDataset(train_path, input_key = "z_latent_vector", target_key = "y_specz_redshift")
 valid_data = GalaxiesMLDataset(valid_path, input_key = "z_latent_vector", target_key = "y_specz_redshift")

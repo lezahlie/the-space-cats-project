@@ -138,6 +138,7 @@ def plot_predictions(y_true_dict, y_pred_dict, save_path):
     fig.suptitle("KNN Predicted vs Actual Redshift", fontsize=13)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -155,6 +156,7 @@ def plot_error_kde(y_true_dict, y_pred_dict, save_path):
     ax.legend()
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -176,6 +178,7 @@ def plot_tuning_results(tune_results, save_path):
     ])
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -213,6 +216,7 @@ def plot_model_comparison(comparison_results, save_path):
     fig.suptitle("Latent Quality: KNN Probe Across Mask Ratios", fontsize=13)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 

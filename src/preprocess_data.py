@@ -112,7 +112,7 @@ class PrepareDatasets:
 
     def build_dataloaders(self):
 
-        self.train_dataloader = pt.utils.data.DataLoader(
+        train_dataloader = pt.utils.data.DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
@@ -123,8 +123,11 @@ class PrepareDatasets:
             pin_memory=self.pin_memory,
             persistent_workers=True
         )
+        if len(train_dataloader) == 0:
+            raise RuntimeError("Training dataloader has zero batches, please verify the dataset is not empty")
+        setattr(self, "train_dataloader", train_dataloader)
 
-        self.valid_dataloader = pt.utils.data.DataLoader(
+        valid_dataloader = pt.utils.data.DataLoader(
             dataset=self.valid_dataset,
             batch_size=self.batch_size,
             shuffle=False,
@@ -136,8 +139,11 @@ class PrepareDatasets:
             persistent_workers=True
 
         )
-        
-        self.test_dataloader = pt.utils.data.DataLoader(
+        if len(valid_dataloader) == 0:
+            raise RuntimeError("Validation dataloader has zero batches, please verify the dataset is not empty.")
+        setattr(self, "valid_dataloader", valid_dataloader)
+
+        test_dataloader = pt.utils.data.DataLoader(
             dataset=self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
@@ -148,6 +154,9 @@ class PrepareDatasets:
             pin_memory=self.pin_memory,
             persistent_workers=True
         )
+        if len(test_dataloader) == 0:
+            raise RuntimeError("Testing dataloader has zero batches, please verify the dataset is not empty.")
+        setattr(self, "test_dataloader", test_dataloader)
 
     @classmethod
     def load(cls, path, batch_size: int = None, num_workers: int = None, random_seed: int = None, pin_memory=False):
@@ -639,7 +648,7 @@ def main(args):
     logger = get_logger()
 
     dataset_dir = Path(args.input_folder)
-    dataset_file = "5x64x64_{}_reduced_*.hdf5"
+    dataset_file = "5x64x64_{}_*.hdf5"
 
     train_matches = list(dataset_dir.glob(dataset_file.format("training")))
     if not train_matches:
@@ -712,18 +721,25 @@ python src/preprocess_data.py \
 --input-folder data/galaxiesml_tiny \
 --output-folder data/preprocessed \
 --num-cores 2 \
---mask-ratio 0.5 \
+--mask-ratio 0.0 \
 --debug
 
 python src/preprocess_data.py \
 --input-folder data/galaxiesml_small \
 --output-folder data/preprocessed \
 --num-cores 2 \
---mask-ratio 0.5 \
+--mask-ratio 0.25 \
 --debug
 
 python src/preprocess_data.py \
 --input-folder data/galaxiesml_medium \
+--output-folder data/preprocessed \
+--num-cores 2 \
+--mask-ratio 0.5 \
+--debug
+
+python src/preprocess_data.py \
+--input-folder data/galaxiesml_large \
 --output-folder data/preprocessed \
 --num-cores 2 \
 --mask-ratio 0.75 \

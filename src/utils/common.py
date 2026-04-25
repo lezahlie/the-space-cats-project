@@ -21,6 +21,7 @@ import traceback
 import gc
 import copy 
 import time
+import tarfile
 from datetime import datetime
 
 from pathlib import Path
@@ -161,6 +162,78 @@ class HDF5StackWriter:
     def __exit__(self, exc_type, exc, tb):
         self.close()
 
+
+def dump_hdf5_structure(path: Path) -> Path:
+    out_txt = path.with_suffix(path.suffix + ".structure.txt")
+
+    def write_attrs(obj, fh, indent):
+        if len(obj.attrs) == 0:
+            return
+        fh.write(f"{indent}@attrs\n")
+        for k, v in obj.attrs.items():
+            fh.write(f"{indent}  - {k}: {repr(v)}\n")
+
+    with h5py.File(path, "r") as f, open(out_txt, "w", encoding="utf-8") as fh:
+        fh.write(f"FILENAME: {path.name}\n\n")
+
+        def recurse(name, obj, depth=0):
+            indent = "  " * depth
+
+            if isinstance(obj, h5py.Group):
+                fh.write(f"{indent}[GROUP] {name or '/'}\n")
+                write_attrs(obj, fh, indent + "  ")
+
+                for key in obj.keys():
+                    child = obj[key]
+                    child_name = f"{name}/{key}" if name else key
+                    recurse(child_name, child, depth + 1)
+
+            elif isinstance(obj, h5py.Dataset):
+                fh.write(
+                    f"{indent}[DATASET] {name} | "
+                    f"shape={obj.shape} | dtype={obj.dtype}\n"
+                )
+                write_attrs(obj, fh, indent + "  ")
+
+        recurse("", f, 0)
+
+    return out_txt
+
+def get_versioned_backup_path(path):
+    path = Path(path)
+
+    if path.name.endswith(".tar.gz"):
+        base_name = path.name[:-7]
+        suffix = ".tar.gz"
+    else:
+        base_name = path.stem
+        suffix = path.suffix
+
+    version = 1
+    while True:
+        backup_path = path.with_name(f"{base_name}.v{version}{suffix}")
+        if not backup_path.exists():
+            return backup_path
+        version += 1
+
+
+def make_tar_gz(src_dir, tar_path):
+    src_dir = Path(src_dir)
+    tar_path = Path(tar_path)
+
+    if not src_dir.is_dir():
+        raise FileNotFoundError(f"Source directory does not exist: {src_dir}")
+
+    tar_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if tar_path.exists():
+        backup_path = get_versioned_backup_path(tar_path)
+        tar_path.rename(backup_path)
+
+    with tarfile.open(tar_path, "w:gz") as tar:
+        tar.add(src_dir, arcname=src_dir.name)
+
+    return tar_path
 
 class GalaxiesMLDataset(pt.utils.data.Dataset):
     def __init__(

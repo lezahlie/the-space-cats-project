@@ -5,7 +5,7 @@ from src.utils.common import copy, AttrDict
 
 
 DEFAULT_CONFIG = {
-    "num_epochs": 500,
+    "num_epochs": 100,
 
     # loss
     "ssim_loss_weight": 0.0,
@@ -38,13 +38,13 @@ DEFAULT_CONFIG = {
 
     # early stopping
     "enable_earlystop": True,
-    "earlystop_patience": 5,
-    "earlystop_min_delta": 1e-4,
+    "earlystop_patience": 12,
+    "earlystop_min_delta": 0.0,
 
     # logging / plotting
     "log_epoch_frequency": 1,
     "log_batch_frequency": 0,
-    "plot_last_batch_frequency": 5,
+    "plot_last_batch_frequency": 0,
     "plot_last_batch_limit": 1,
 }
 
