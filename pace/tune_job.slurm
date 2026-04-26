@@ -10,6 +10,7 @@
 #SBATCH --mem=24G
 #SBATCH --gres=gpu:1
 #SBATCH --time=16:00:00 # ice-gpu max; tune_model.py auto-recovers completed stages if resubmitted
+#SBATCH --exclusive
 # #SBATCH --account=<account>
 
 set -euo pipefail
@@ -40,6 +41,7 @@ if [ ! -d "$PREP_DIR" ]; then
         --num-cores "$NUM_CORES" \
         --mask-ratio "$MASK_RATIO"
 fi
+
 echo "starting tuning | person=$PERSON mask_ratio=$MASK_RATIO output=$OUTPUT_DIR"
 python "$PROJECT_DIR/src/tune_model.py" \
     --input-folder "$PREP_DIR" \

@@ -40,6 +40,7 @@ if [ ! -d "$PREP_DIR" ]; then
         --mask-ratio 0.0 \
         --debug
 fi
+
 echo "starting test train | output=$OUTPUT_DIR"
 python "$PROJECT_DIR/src/train_model.py" \
     --config-file "$PROJECT_DIR/configs/train_config.json" \
@@ -47,5 +48,9 @@ python "$PROJECT_DIR/src/train_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
+    --max-optimizer-steps 100 \
+    --validate-every-steps 20 \
+    --max-wallclock-hours 1 \
+    --checkpoint-buffer-minutes 45 \
     --debug
 echo "done | $OUTPUT_DIR"
