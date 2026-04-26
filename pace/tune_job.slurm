@@ -15,14 +15,14 @@
 set -euo pipefail
 
 PROJECT_DIR="$HOME/the-space-cats-project"
-DATASET="galaxiesml_medium"
+DATASET="galaxiesml_small"
 NUM_CORES=4
 MASK_RATIO="${MASK_RATIO:-0.0}"
 PERSON="${PERSON:-user}"
 MASK_LABEL="${MASK_RATIO//./_}"
 
 PREP_DIR="$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL/$DATASET"
-OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_${PERSON}_${MASK_RATIO}"
+OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_small_${PERSON}_${MASK_RATIO}"
 mkdir -p "$PROJECT_DIR/logs"
 echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-?} mask_ratio=$MASK_RATIO person=$PERSON"
 
@@ -46,6 +46,7 @@ python "$PROJECT_DIR/src/tune_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
-    --tune-epochs 30 \
-    --epoch-patience 10
+    --tune-optimizer-steps 750 \
+    --validate-every-steps 75 \
+    --tune-patience 5
 echo "done | $OUTPUT_DIR"
