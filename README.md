@@ -284,11 +284,12 @@ Dataset download page: https://zenodo.org/records/11117528
     python src/train_model.py \
     --config-file "configs/train_defaults.json" \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
-    --output-folder "experiments/train_debug_tiny" \
+    --output-folder "experiments/train_overfit_tiny" \
     --gpu-memory-fraction 0.9 \
     --num-cores 5 \
+    --tune-optimizer-steps 1000 \
     --validate-every-steps 50 \
-    --max-wallclock-hours 1.5 \
+    --max-wallclock-hours 2 \
     --checkpoint-buffer-minutes 30
     --debug
     ```

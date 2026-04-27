@@ -101,8 +101,7 @@ class CNNDecoder(NN.Module):
                         out_channels=out_chan,
                         kernel_size=self.conv_kernel,
                         stride=1,
-                        padding=self.conv_padding,
-                        padding_mode="reflect",
+                        padding=self.conv_padding
                     ),
                     self._get_norm_layer(out_chan),
                     self._get_activation(),
@@ -122,8 +121,7 @@ class CNNDecoder(NN.Module):
                 out_channels=self.input_channels,
                 kernel_size=self.conv_kernel,
                 stride=1,
-                padding=self.conv_padding,
-                padding_mode="reflect",
+                padding=self.conv_padding
             ),
         )
 

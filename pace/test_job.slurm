@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=5 # 5 requested, script uses 4, 1 for the OS
 #SBATCH --mem=24G
 #SBATCH --gres=gpu:1
-#SBATCH --time=01:30:00
+#SBATCH --time=02:00:00
 #SBATCH --output=logs/test_%j.out
 #SBATCH --error=logs/test_%j.err
 # #SBATCH --account=<account>
@@ -47,8 +47,9 @@ python "$PROJECT_DIR/src/train_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
+    --tune-optimizer-steps 1000 \
     --validate-every-steps 50 \
-    --max-wallclock-hours 1.5 \
-    --checkpoint-buffer-minutes 30 \
+    --max-wallclock-hours 2 \
+    --checkpoint-buffer-minutes 30
     --debug
 echo "done | $OUTPUT_DIR"
