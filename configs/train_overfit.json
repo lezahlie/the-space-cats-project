@@ -18,8 +18,8 @@
     "lr_scheduler_min_lr": 1e-6,
 
     "hidden_layers": 3,
-    "hidden_dims": 128,
-    "latent_dims": 128,
+    "hidden_dims": 256,
+    "latent_dims": 256,
     "conv_kernel": 3,
     "conv_stride": 2,
 

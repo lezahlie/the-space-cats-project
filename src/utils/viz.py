@@ -369,7 +369,8 @@ def plot_learning_curves(history, save_path):
     ax_loss.set_xlabel(x_label, fontsize=label_fs)
     ax_loss.set_ylabel("Smooth-L1", fontsize=label_fs)
     ax_ssim.set_ylabel("1-SSIM", fontsize=label_fs)
-    ax_ssim.set_ylim(0.0, 1.0)
+    ax_ssim.set_yticks([0.0, 0.2, 0.4, 0.5, 0.8, 1.0])
+    ax_ssim.set_ylim(-0.05, 1.05)
 
     lines_1, labels_1 = ax_loss.get_legend_handles_labels()
     lines_2, labels_2 = ax_ssim.get_legend_handles_labels()

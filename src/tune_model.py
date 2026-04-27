@@ -193,6 +193,7 @@ def get_stage_grids(best_config: dict) -> dict:
         2: {
             "name": "stage2_lr_scheduler",
             "grid": {
+                "lr_scheduler": ["plateau"],
                 "lr_scheduler_patience": [1, 2, 3],
                 "lr_scheduler_factor": [0.1, 0.2, 0.3]
             },
@@ -233,7 +234,7 @@ def get_stage_grids(best_config: dict) -> dict:
         6: {
             "name": "stage6_optimizer",
             "grid": {
-                "weight_decay": [0.0, 1e-5, 1e-4],
+                "weight_decay": [0.0, 1e-5, 5e-5, 1e-4],
                 "optim_beta1": [0.85, 0.9],
                 "optim_beta2": [0.99, 0.999],
             },
@@ -243,6 +244,7 @@ def get_stage_grids(best_config: dict) -> dict:
             "grid": {
                 "learn_rate": fine_lr,
                 "batch_size": fine_batch_size,
+                "weight_decay": fine_weight_decay
             },
         },
     }
