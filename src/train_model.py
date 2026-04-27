@@ -1074,15 +1074,15 @@ class ModelTrainer:
                     f"best_valid_loss={self.best_valid_loss:.8f}"
                 )
 
-                # self.save_model_checkpoint(
-                #     file_name="best_model.pth",
-                #     model_state_dict=self.best_model_state,
-                #     extra_data={
-                #         "best_epoch": self.best_model_epoch,
-                #         "best_optimizer_step": self.best_model_optimizer_step,
-                #         "best_valid_loss": self.best_valid_loss,
-                #     },
-                # )
+                self.save_model_checkpoint(
+                    file_name="best_model.pth",
+                    model_state_dict=self.best_model_state,
+                    extra_data={
+                        "best_epoch": self.best_model_epoch,
+                        "best_optimizer_step": self.best_model_optimizer_step,
+                        "best_valid_loss": self.best_valid_loss,
+                    },
+                )
 
             if self._should_earlystop():
                 stop_reason = "validation_earlystop"

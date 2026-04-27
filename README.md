@@ -344,6 +344,7 @@ Dataset download page: https://zenodo.org/records/11117528
      - `epoch_patience=4` is defined in `configs/tune_defaults.json`)
    - after a current best exists, it fails to beat the current best validation loss within `tune_patience=4 * validate_every_steps=100` optimizer updates after the current best trial's best optimizer step
      - `tune_patience` and `validate_every_steps` are defined in the pace scripts and in the command below
+4. Tuning only runs `60` total trials now with early stopping per-trial and across trials
 
 
 ```bash
