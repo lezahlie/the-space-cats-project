@@ -8,15 +8,15 @@ class CNNDecoder(NN.Module):
         input_channels: int,
         input_size: int,
         conv_kernel: int=3,
-        conv_stride: int=1,
+        conv_stride: int=2,
         hidden_layers: int=3, 
-        hidden_dims: int=256, 
+        hidden_dims: int=128, 
         hidden_factor: float=2.0,
-        latent_dims: int=128, 
+        latent_dims: int=64, 
         activation_function: str = "relu",
         negative_slope: float = 0.01,
         norm_layer: str = "none",
-        ascending_channels: bool = False
+        ascending_channels: bool = True
     ): 
         super(CNNDecoder, self).__init__()
         
@@ -74,58 +74,56 @@ class CNNDecoder(NN.Module):
         # input layer: Linear → Unflatten
         # latent z (batch, latent_dims) → (batch, C, H, W) at bottleneck
         self.input_layer = NN.Sequential(
-            NN.Linear(
-                in_features=self.latent_dims,
-                out_features=self.reduced_channels * self.bottleneck_HxW,
-            ),
-            NN.Unflatten(
-                dim=1, 
-                unflattened_size=(self.reduced_channels, self.bottleneck_size, self.bottleneck_size)
-            ),
             NN.Conv2d(
-                in_channels=self.reduced_channels,
+                in_channels=self.latent_dims,
                 out_channels=self.hidden_per_layer[0],
                 kernel_size=1,
                 stride=1,
                 padding=0,
             ),
+            self._get_norm_layer(self.hidden_per_layer[0]),
+            self._get_activation(),
         )
-        # hidden layers: ConvTranspose2d × (hidden_layers - 1)
+
+        # hidden layers: Upsample + Conv2d x (hidden_layers - 1)
         current_size = self.bottleneck_size
         self.decoder_layers = NN.ModuleList()
         for i in range(1, self.hidden_layers):
             in_chan = self.hidden_per_layer[i - 1]
             out_chan = self.hidden_per_layer[i]
+            target_size = self.encoder_sizes[-(i + 1)]
 
-            target_size = self.encoder_sizes[-(i+1)]
-            output_padding = self._get_output_padding(current_size, target_size)
             self.decoder_layers.append(
                 NN.Sequential(
-                    NN.ConvTranspose2d(
+                    NN.Upsample(size=(target_size, target_size), mode="bilinear", align_corners=False),
+                    NN.Conv2d(
                         in_channels=in_chan,
                         out_channels=out_chan,
                         kernel_size=self.conv_kernel,
-                        stride=self.conv_stride,
+                        stride=1,
                         padding=self.conv_padding,
-                        output_padding=output_padding
+                        padding_mode="reflect",
                     ),
                     self._get_norm_layer(out_chan),
                     self._get_activation(),
                 )
             )
+
             current_size = target_size
 
-        final_output_padding = self._get_output_padding(current_size, self.input_size)
+        # final_output_padding = self._get_output_padding(current_size, self.input_size)
+
         # output layer: project back to original image channels
         # no activation after — let loss function decide (e.g. sigmoid outside)
         self.output_layer = NN.Sequential(
-            NN.ConvTranspose2d(
+            NN.Upsample(size=(self.input_size, self.input_size), mode="bilinear", align_corners=False),
+            NN.Conv2d(
                 in_channels=self.hidden_per_layer[-1],
                 out_channels=self.input_channels,
                 kernel_size=self.conv_kernel,
-                stride=self.conv_stride,
+                stride=1,
                 padding=self.conv_padding,
-                output_padding=final_output_padding,
+                padding_mode="reflect",
             ),
         )
 
@@ -219,28 +217,23 @@ def test_main(args):
         args.random_seed
     )
 
-    batch_size = 20
     input_channels = 5
     input_size = 64
-    latent_dims = 128
+    batch_size = 20
+    latent_dims = 64
+    hidden_layers= 3
+    conv_stride = 2
 
-    # simulate encoder's output (latent vector)
-    dummy_latent = pt.randn(batch_size, latent_dims)
+    spatial_size = input_size // (conv_stride ** hidden_layers)
+
+    dummy_latent = pt.randn(batch_size, latent_dims, spatial_size, spatial_size)
     expected_output_shape = (batch_size, input_channels, input_size, input_size)
 
     model = CNNDecoder(
         input_channels, 
-        input_size, 
-        conv_kernel=3,
-        conv_stride=1,
-        hidden_layers = 3,
-        hidden_dims=128,
-        hidden_factor=2.0,
-        latent_dims=latent_dims,
-        activation_function="leaky",
-        negative_slope= 0.01,
-        norm_layer="group",
-        ascending_channels=True
+        input_size,
+        hidden_layers = hidden_layers,
+        latent_dims = latent_dims
     )
 
     logger.debug(f"Latent input shape: {dummy_latent.shape}")

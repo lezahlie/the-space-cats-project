@@ -258,8 +258,8 @@ Dataset download page: https://zenodo.org/records/11117528
     python src/preprocess_data.py \
     --input-folder "data/galaxiesml_tiny" \
     --output-folder "data/preprocessed" \
-    --num-cores 3 \
-    --mask-ratio 0.5 \
+    --num-cores 2 \
+    --mask-ratio 0.0 \
     --debug
     ```
 
@@ -267,12 +267,13 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/tune_model.py \
+    --config-file "configs/tune_defaults.json" \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
     --output-folder "experiments/tune_debug_tiny" \
     --gpu-memory-fraction 0.9 \
-    --num-cores 3 \
-    --tune-optimizer-steps 100 \
-    --validate-every-steps 20 \
+    --num-cores 5 \
+    --tune-optimizer-steps 500 \
+    --validate-every-steps 50 \
     --tune-patience 2 \
     --debug
     ```
@@ -281,15 +282,14 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/train_model.py \
-    --config-file "configs/train_config.json" \
+    --config-file "configs/train_defaults.json" \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
-    --output-folder "experiments/train_galaxiesml_tiny" \
+    --output-folder "experiments/train_debug_tiny" \
     --gpu-memory-fraction 0.9 \
     --num-cores 5 \
-    --max-optimizer-steps 100 \
-    --validate-every-steps 20 \
-    --max-wallclock-hours 1 \
-    --checkpoint-buffer-minutes 45
+    --validate-every-steps 50 \
+    --max-wallclock-hours 1.5 \
+    --checkpoint-buffer-minutes 30
     --debug
     ```
 
@@ -340,33 +340,21 @@ Dataset download page: https://zenodo.org/records/11117528
 1. `tune_model.py` autodetects and recovers completed stages and trials from saved CSV logs.
 2. Each trial runs for at most `--tune-optimizer-steps` optimizer updates, unless capped earlier by `num_epochs * batches_per_epoch`.
 3. A trial stops early if either of these happens:
-   - its validation loss does not improve for `--tune-patience` consecutive validation checks, or
-   - after a current best exists, it fails to beat the current best validation loss within `tune_patience * validate_every_steps` optimizer updates after the current best trial's best optimizer step.
-4. With the recommended tuning command:
-   - `--tune-optimizer-steps 750`
-   - `--validate-every-steps 75`
-   - `--tune-patience 5`
-5. The staged tuning grid is:
-   - Stage 1: learning rate = `4` trials
-   - Stage 2: learning-rate scheduler = `9` trials
-   - Stage 3: optimizer = `9` trials
-   - Stage 4: model capacity = `18` trials
-   - Stage 5: network structure = `8` trials
-   - Stage 6: SSIM loss weight = `6` trials
-   - Stage 7: fine grained search around best stage 1 and 3 = up to `27` trials
-   - Stage 8: AdamW betas = `6` trials
-6. In the worst case, this tuning grid performs:
-   - `87` trials x `750` optimizer steps = `65,250` optimizer steps
-   - `87` trials x `10` validation checks = `870` validation checks
+   - its validation loss does not improve for `epoch_patience=4` consecutive validation checks
+     - `epoch_patience=4` is defined in `configs/tune_defaults.json`)
+   - after a current best exists, it fails to beat the current best validation loss within `tune_patience=4 * validate_every_steps=100` optimizer updates after the current best trial's best optimizer step
+     - `tune_patience` and `validate_every_steps` are defined in the pace scripts and in the command below
+
 
 ```bash
 python src/tune_model.py \
+--config-file "configs/tune_defaults.json" \
 --input-folder "data/preprocessed/galaxiesml_small" \
---output-folder "experiments/tune_mae_small_leslie_mask0" \
+--output-folder "experiments/tune_mae_small_<first_name>_<mask>" \
 --gpu-memory-fraction 0.9 \
 --num-cores 5 \
---tune-optimizer-steps 750 \
---validate-every-steps 75 \
+--tune-optimizer-steps 1000 \
+--validate-every-steps 50 \
 --tune-patience 5
 ```
 > - Do not pass `--debug` or it will NOT run the full tuning grid
@@ -380,7 +368,7 @@ python src/tune_model.py \
 1. Copy the best overall config from tuning to the configs folder
 
     ```bash
-    cp -p "experiments/tune_mae_small_<first_name>_<mask_ratio>/best_overall_config.json" "configs/best_config_<first_name>_<mask_ratio>.json"
+    cp -p "experiments/tune_mae_small_<first_name>_<mask_ratio>/best_overall_config.json" "configs/train_best_<first_name>_<mask_ratio>.json"
     ```
     > Please put your <first_name> and <mask_ratio> and commit the new config to github
 
@@ -393,10 +381,9 @@ python src/tune_model.py \
     --output-folder "experiments/train_mae_medium_<first_name>_<mask_ratio>" \
     --gpu-memory-fraction 0.9 \
     --num-cores 5 \
-    --max-optimizer-steps 50000 \
-    --validate-every-steps 200 \
+    --validate-every-steps 100 \
     --max-wallclock-hours 16 \
-    --checkpoint-buffer-minutes 60
+    --checkpoint-buffer-minutes 120
     ```
 
     > Notes 

@@ -95,8 +95,16 @@ def process_args():
 # Contributor: Wen Yu
 # --------------------------------------------------
 
-def _grid_combinations(param_grid: dict) -> list:
-    """All combinations of a param_grid dict."""
+def _grid_combinations(param_grid) -> list:
+    """Return explicit stage combos or Cartesian combos."""
+    if isinstance(param_grid, list):
+        if not all(isinstance(combo, dict) for combo in param_grid):
+            raise ValueError("param_grid list must contain only dictionaries")
+        return param_grid
+
+    if not isinstance(param_grid, dict):
+        raise TypeError("param_grid must be a dict or list[dict]")
+
     keys, values = list(param_grid.keys()), list(param_grid.values())
     return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
 
@@ -155,17 +163,18 @@ def base2_neighbors(best_val: int, lower=8, upper=256) -> list[int]:
 
 def get_stage_grids(best_config: dict) -> dict:
 
-    best_lr = best_config.get("learn_rate", 5e-4)
+    best_lr = best_config.get("learn_rate", 3e-4)
     fine_lr = log_neighbors(best_lr, sigs=(1.0, 3.0, 5.0), lower=1e-5, upper=1e-3)
 
-    best_min_lr = best_config.get("lr_scheduler_min_lr", 1e-6)
-    fine_min_lr = log_neighbors(best_min_lr, sigs=(1.0, 3.0, 5.0), lower=1e-7, upper=5e-6)
-
     best_batch_size = best_config.get("batch_size", 64)
-    fine_batch_size = base2_neighbors(best_batch_size, lower=8, upper=256)
+    fine_batch_size = base2_neighbors(best_batch_size, lower=16, upper=128)
 
     best_weight_decay = best_config.get("weight_decay", 0.0)
-    fine_weight_decay = [0.0, 1e-6, 1e-5] if best_weight_decay == 0.0 else log_neighbors(best_weight_decay, sigs=(1.0, 3.0, 5.0), lower=1e-8, upper=1e-3)
+    fine_weight_decay = (
+        [0.0, 1e-6, 1e-5]
+        if best_weight_decay == 0.0
+        else log_neighbors(best_weight_decay, sigs=(1.0, 3.0, 5.0), lower=1e-8, upper=1e-3)
+    )
 
     if best_config.get("debug", False):
         return {
@@ -177,44 +186,56 @@ def get_stage_grids(best_config: dict) -> dict:
         1: {
             "name": "stage1_learning",
             "grid": {
-                "learn_rate": [5e-5, 1e-4, 5e-4],
+                "learn_rate": [1e-4, 3e-4, 5e-4],
+                "batch_size": [32, 64, 128],
             },
         },
         2: {
             "name": "stage2_lr_scheduler",
             "grid": {
-                "lr_scheduler_patience": [0, 2, 4],
-                "lr_scheduler_factor": [0.1, 0.2, 0.3],
-                "lr_scheduler_min_lr": [1e-6],
+                "lr_scheduler_patience": [1, 2, 3],
+                "lr_scheduler_factor": [0.1, 0.2, 0.3]
             },
         },
         3: {
-            "name": "stage3_optimizer",
-            "grid": {
-                "batch_size": [32, 64, 128],
-                "weight_decay": [0.0, 1e-6, 1e-5],
-            },
+            "name": "stage3_capacity",
+            "grid": [
+                {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 32},
+                {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 64},
+                {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 128},
+
+                {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 64},
+                {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 128},
+                {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 256},
+
+                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 32},
+                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 64},
+                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 128},
+
+                {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 64},
+                {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 128},
+                {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 256},
+            ],
         },
         4: {
-            "name": "stage4_capacity",
+            "name": "stage4_network",
             "grid": {
-                "hidden_layers": [2, 3],
-                "hidden_dims": [64, 128, 256],
-                "latent_dims": [64, 128, 256],
+                "conv_kernel": [3, 5],
+                "activation_function": ["relu", "leaky"]
             },
         },
         5: {
-            "name": "stage5_network",
+            "name": "stage5_ssim",
             "grid": {
-                "conv_kernel": [3, 5],
-                "activation_function": ["relu", "leaky"],
-                "ascending_channels": [True, False],
+                "ssim_loss_weight": [0.0, 0.25, 0.5, 0.75, 1.0],
             },
         },
         6: {
-            "name": "stage6_ssim",
+            "name": "stage6_optimizer",
             "grid": {
-                "ssim_loss_weight": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                "weight_decay": [0.0, 1e-5, 1e-4],
+                "optim_beta1": [0.85, 0.9],
+                "optim_beta2": [0.99, 0.999],
             },
         },
         7: {
@@ -225,13 +246,6 @@ def get_stage_grids(best_config: dict) -> dict:
                 "batch_size": fine_batch_size,
             },
         },
-        8: {
-            "name": "stage8_betas",
-            "grid": {
-                "optim_beta1": [0.85, 0.9, 0.95],
-                "optim_beta2": [0.99, 0.999],
-            },
-        }
     }
 
 # --------------------------------------------------
@@ -419,7 +433,6 @@ class HyperparameterSearch(ModelTrainer):
             f"best_optimizer_step={self.best_overall_optimizer_step}"
         )
         return state
-    
 
     def _existing_stage_state(self, stage_name: str):
         rows = self._read_stage_results(stage_name)
@@ -428,17 +441,17 @@ class HyperparameterSearch(ModelTrainer):
         best_loss = float("inf")
         best_params = {}
         best_trial_id = ""
-        best_so_far_optimizer_step = 0
+        best_optimizer_step = 0
 
         for row in rows:
             hyper_params = row.get("hyper_params", "")
             status = str(row.get("status", "")).strip().lower()
 
-            # include pruned here
             if pd.notna(hyper_params) and hyper_params != "" and status in {"complete", "ok", "pruned"}:
                 completed[str(hyper_params)] = row
 
-            loss_value = row.get("loss_value", "inf")
+            loss_value = row.get("trial_best_loss", row.get("loss_value", "inf"))
+
             try:
                 loss = float(loss_value)
             except (TypeError, ValueError):
@@ -448,30 +461,38 @@ class HyperparameterSearch(ModelTrainer):
                 best_loss = loss
                 best_params = json.loads(str(hyper_params)) if pd.notna(hyper_params) and hyper_params != "" else {}
                 best_trial_id = str(row.get("trial_id", ""))
-                try:
-                    best_so_far_optimizer_step = int(row.get("best_so_far_optimizer_step", 0))
-                except (TypeError, ValueError):
-                    best_so_far_optimizer_step = 0
 
-        return completed, best_loss, best_params, best_trial_id, best_so_far_optimizer_step
+                try:
+                    best_optimizer_step = int(row.get("trial_best_step", row.get("optimizer_step", 0)))
+                except (TypeError, ValueError):
+                    best_optimizer_step = 0
+
+        return completed, best_loss, best_params, best_trial_id, best_optimizer_step
     
     def _append_stage_result(self, stage_name: str, row: dict):
         csv_path = self._stage_csv_path(stage_name)
         fieldnames = [
+            # trial meta
             "datetime",
-            "stage_name",
             "stage_id",
+            "stage_name",
             "trial_id",
-            "loss_value",
-            "best_so_far_trial",
-            "best_so_far_loss",
-            "best_so_far_optimizer_step",
-            "trial_total_seconds",
+            "status",
+
+            # trial result
+            "trial_best_loss",
+            "trial_best_step",
+            "trial_seconds",
             "trial_peak_ram_mb",
             "trial_peak_vram_mb",
+
+            # best so far stage/trial  
+            "best_so_far",
+
+
+            # reproducibility / debugging
             "hyper_params",
             "config_path",
-            "status",
             "error_message",
         ]
 
@@ -493,17 +514,18 @@ class HyperparameterSearch(ModelTrainer):
             return
 
         try:
-            for loader_name in ("train_loader", "valid_loader", "test_loader"):
-                loader = getattr(trainer, loader_name, None)
-                dataset = getattr(loader, "dataset", None)
-
-                file_obj = getattr(dataset, "_file", None)
-                if file_obj is not None:
-                    file_obj.close()
-                    dataset._file = None
+            prepare_datasets = getattr(trainer, "prepare_datasets", None)
+            if prepare_datasets is not None and hasattr(prepare_datasets, "close"):
+                try:
+                    prepare_datasets.close()
+                except Exception:
+                    pass
 
             if hasattr(trainer, "mae_model"):
-                trainer.mae_model.to("cpu")
+                try:
+                    trainer.mae_model.to("cpu")
+                except Exception:
+                    pass
 
             for attr in (
                 "mae_model",
@@ -523,6 +545,37 @@ class HyperparameterSearch(ModelTrainer):
 
         finally:
             SetupDevice.free_memory()
+
+    def save_stage_grids(self, stage_defs: dict, file_name: str = "resolved_tuning_stages.json"):
+        manifest = {
+            "total_trials": 0,
+            "stages": []
+        }
+
+        for stage_id in sorted(stage_defs.keys()):
+            stage = stage_defs[stage_id]
+            stage_name = stage["name"]
+            grid = stage["grid"]
+            combos = _grid_combinations(grid)
+
+            manifest["total_trials"] += len(combos)
+            manifest["stages"].append({
+                "stage_id": int(stage_id),
+                "stage_name": stage_name,
+                "num_trials": len(combos),
+                "grid": grid,
+                "expanded_trials": combos,
+            })
+
+        path = self.tuning_dir / file_name
+        save_to_json(path, manifest)
+
+        self.logger.info(
+            f"[TUNING] Saved stage grid manifest -> {path} "
+            f"total_trials={manifest['total_trials']}"
+        )
+
+        return path
 
     def _run_trial_with_pruning(
         self,
@@ -653,7 +706,7 @@ class HyperparameterSearch(ModelTrainer):
     def run_stage(self, stage_id: int, param_grid: dict, stage_name: str) -> tuple:
         combos = _grid_combinations(param_grid)
         completed, best_loss, best_params, best_trial_id, best_so_far_optimizer_step = self._existing_stage_state(stage_name)
-    
+
         if all(self._get_hyper_params(params) in completed for params in combos):
             self.logger.info(
                 f"[{stage_name}] all {len(combos)} trials already completed; "
@@ -662,13 +715,19 @@ class HyperparameterSearch(ModelTrainer):
                 f"best_optimizer_step={best_so_far_optimizer_step}"
             )
             return best_params, best_loss, best_trial_id, best_so_far_optimizer_step
-        
+
         running_best_loss = self.best_overall_loss
         running_best_optimizer_step = self.best_overall_optimizer_step
+        best_so_far_stage = "previous"
+        best_so_far_trial = ""
 
-        if np.isfinite(best_loss) and (not np.isfinite(running_best_loss) or best_loss < running_best_loss):
+        if np.isfinite(best_loss) and (
+            not np.isfinite(running_best_loss) or best_loss < running_best_loss
+        ):
             running_best_loss = best_loss
             running_best_optimizer_step = best_so_far_optimizer_step
+            best_so_far_stage = stage_name
+            best_so_far_trial = best_trial_id
 
         for i, params in enumerate(combos, 1):
             trial_id = f"{i:04d}"
@@ -680,33 +739,52 @@ class HyperparameterSearch(ModelTrainer):
             cfg = self._scalar_config(params)
             label = f"{stage_name}_trial_{trial_id}"
 
+            loss = float("inf")
+            best_optimizer_step = 0
+            status = "failed"
             error_message = ""
             config_path = ""
-
-            trainer = None
-            memory_stats = {}
+            memory_stats = {
+                "trial_peak_ram_mb": 0.0,
+                "trial_peak_vram_mb": 0.0,
+            }
             start_time = time.perf_counter()
 
-            try:
-                trainer = self.make_trainer(cfg, label)
-                config_path = str(trainer.output_folder / "resolved_train_config.json")
-
-                loss, best_optimizer_step, memory_stats, pruned = self._run_trial_with_pruning(
-                    trainer=trainer,
-                    current_best_loss=running_best_loss,
-                    current_best_optimizer_step=running_best_optimizer_step,
-                )
-                status = "pruned" if pruned else "complete"
-
-            except Exception as exc:
-                loss = float("inf")
-                best_optimizer_step = 0
-                status = "failed"
-                error_message = str(exc)
-
-            finally:
-                self._cleanup_trainer(trainer)
+            for attempt in range(1, 3):
                 trainer = None
+
+                try:
+                    if attempt == 2:
+                        self.logger.warning(
+                            f"[{stage_name}] retrying trial={trial_id} once after failure"
+                        )
+
+                    trainer = self.make_trainer(cfg, label)
+                    config_path = str(trainer.output_folder / "resolved_train_config.json")
+
+                    loss, best_optimizer_step, memory_stats, pruned = self._run_trial_with_pruning(
+                        trainer=trainer,
+                        current_best_loss=running_best_loss,
+                        current_best_optimizer_step=running_best_optimizer_step,
+                    )
+
+                    status = "pruned" if pruned else "complete"
+                    error_message = ""
+                    break
+
+                except Exception as exc:
+                    loss = float("inf")
+                    best_optimizer_step = 0
+                    status = "failed"
+                    error_message = str(exc)
+
+                    self.logger.warning(
+                        f"[{stage_name}] trial={trial_id} attempt={attempt}/2 failed: {error_message}"
+                    )
+
+                finally:
+                    self._cleanup_trainer(trainer)
+                    trainer = None
 
             if np.isfinite(loss) and loss < best_loss:
                 best_loss = loss
@@ -717,19 +795,30 @@ class HyperparameterSearch(ModelTrainer):
             if np.isfinite(loss) and loss < running_best_loss:
                 running_best_loss = loss
                 running_best_optimizer_step = best_optimizer_step
+                best_so_far_stage = stage_name
+                best_so_far_trial = trial_id
+
+            best_so_far = {
+                "stage": best_so_far_stage,
+                "trial": best_so_far_trial,
+                "loss": f"{running_best_loss:.8f}" if np.isfinite(running_best_loss) else "inf",
+                "step": running_best_optimizer_step,
+            }
 
             self._append_stage_result(
                 stage_name,
                 {
+                    # trial meta
                     "datetime": datetime.now().isoformat(),
-                    "stage_name": stage_name,
                     "stage_id": stage_id,
+                    "stage_name": stage_name,
                     "trial_id": trial_id,
-                    "loss_value": f"{loss:.8f}" if np.isfinite(loss) else "inf",
-                    "best_so_far_trial": best_trial_id,
-                    "best_so_far_loss": f"{best_loss:.8f}" if np.isfinite(best_loss) else "inf",
-                    "best_so_far_optimizer_step": best_so_far_optimizer_step,
-                    "trial_total_seconds": f"{time.perf_counter() - start_time:.2f}",
+                    "status": status,
+
+                    # trial result
+                    "trial_best_loss": f"{loss:.8f}" if np.isfinite(loss) else "inf",
+                    "trial_best_step": best_optimizer_step,
+                    "trial_seconds": f"{time.perf_counter() - start_time:.2f}",
                     "trial_peak_ram_mb": (
                         f"{memory_stats['trial_peak_ram_mb']:.1f}"
                         if "trial_peak_ram_mb" in memory_stats else ""
@@ -738,27 +827,29 @@ class HyperparameterSearch(ModelTrainer):
                         f"{memory_stats['trial_peak_vram_mb']:.1f}"
                         if "trial_peak_vram_mb" in memory_stats else ""
                     ),
+
+                    # best so far
+                    "best_so_far": json.dumps(best_so_far, sort_keys=True),
+
+                    # reproducibility / debugging
                     "hyper_params": hyper_params,
                     "config_path": config_path,
-                    "status": status,
                     "error_message": error_message,
-
                 },
             )
 
-        self.logger.info(
-            f"[{stage_name}] trial={trial_id} status={status} "
-            f"loss={loss:.8f} "
-            f"best_trial={best_trial_id} "
-            f"best_loss={best_loss:.8f} "
-            f"best_optimizer_step={best_so_far_optimizer_step} "
-            f"trial_seconds={time.perf_counter() - start_time:.2f} "
-            f"peak_ram_mb={memory_stats.get('trial_peak_ram_mb', '')} "
-            f"peak_vram_mb={memory_stats.get('trial_peak_vram_mb', '')}"
-        )
+            self.logger.info(
+                f"[{stage_name}] trial={trial_id} status={status} "
+                f"trial_best_loss={loss:.8f} "
+                f"trial_best_step={best_optimizer_step} "
+                f"best_so_far={best_so_far} "
+                f"trial_seconds={time.perf_counter() - start_time:.2f} "
+                f"peak_ram_mb={memory_stats.get('trial_peak_ram_mb', '')} "
+                f"peak_vram_mb={memory_stats.get('trial_peak_vram_mb', '')}"
+            )
 
         return best_params, best_loss, best_trial_id, best_so_far_optimizer_step
-
+    
     # --------------------------------------------------
     # run: top-level entry point with auto state tracking
     # Contributor: Wen Yu, Leslie Horace (Tested + Extended)
@@ -769,12 +860,13 @@ class HyperparameterSearch(ModelTrainer):
         stage_defs = get_stage_grids(self.best_stage_config)
         stage_ids = [s for s in sorted(stage_defs.keys())]
 
-        start_idx = 0
+        self.save_stage_grids(stage_defs, "resolved_tuning_stages.json")
+        
         if state is not None:
             last_completed = state.get("last_completed_stage_id")
             if isinstance(last_completed, int):
                 stage_ids = [s for s in stage_ids if s > last_completed]
-    
+
         for stage_id in stage_ids:
             stage_defs = get_stage_grids(self.best_stage_config)
             stage_name = stage_defs[stage_id]["name"]
@@ -803,14 +895,20 @@ class HyperparameterSearch(ModelTrainer):
         save_to_json(best_tuned_params_path, self.best_tuned_params)
 
         self.best_overall_config.update({
-            "num_epochs": 100,
+            "num_epochs": 500,
+            "lr_scheduler": "plateau",
+            "lr_scheduler_patience": 4,
+            "lr_scheduler_factor": 0.2,
+            "lr_scheduler_min_lr": 1e-6,
+
             "enable_earlystop": True,
             "earlystop_patience": 12,
             "earlystop_min_delta": 0.0,
+
             "log_epoch_frequency": 1,
             "log_batch_frequency": 0,
-            "plot_last_batch_frequency": 1000,
-            "plot_last_batch_limit": 1
+            "plot_last_batch_frequency": 500,
+            "plot_last_batch_limit": 3
         })
 
         best_overall_path = self.output_folder / "best_overall_config.json"
@@ -853,7 +951,7 @@ def main(args):
     base_config.update({
         "debug":       args.debug,
         "num_workers": args.num_cores,
-        "random_seed": args.random_seed,
+        "random_seed": args.random_seed
     })
 
     # assert all(isinstance(x, (tuple, list, dict)) for x in  base_config.values())

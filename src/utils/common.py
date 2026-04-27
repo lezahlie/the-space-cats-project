@@ -23,7 +23,7 @@ import copy
 import time
 import tarfile
 from datetime import datetime
-
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Literal, List, Tuple, Dict, Type, Optional, Union
 

@@ -7,45 +7,40 @@ from src.utils.common import copy, AttrDict
 DEFAULT_CONFIG = {
     "num_epochs": 100,
 
-    # loss
     "ssim_loss_weight": 0.0,
 
-    # optimizer
     "batch_size": 64,
-    "learn_rate": 5e-4,
+    "learn_rate": 1e-4,
     "weight_decay": 0.0,
     "optim_beta1": 0.9,
     "optim_beta2": 0.999,
     "optim_type": "adamw",
 
-    # scheduler
     "lr_scheduler": "plateau",
-    "lr_scheduler_patience": 3,
-    "lr_scheduler_factor": 0.5,
+    "lr_scheduler_patience": 4,
+    "lr_scheduler_factor": 0.2,
     "lr_scheduler_min_lr": 1e-6,
 
-    # architecture
     "hidden_layers": 3,
-    "hidden_dims": 64,
+    "hidden_dims": 128,
     "latent_dims": 64,
     "conv_kernel": 3,
-    "conv_stride": 1,
+    "conv_stride": 2,
+
     "activation_function": "relu",
     "norm_layer": "none",
     "negative_slope": 0.01,
     "hidden_factor": 2.0,
-    "ascending_channels": False,
+    "ascending_channels": True,
 
-    # early stopping
     "enable_earlystop": True,
     "earlystop_patience": 12,
     "earlystop_min_delta": 0.0,
 
-    # logging / plotting
     "log_epoch_frequency": 1,
     "log_batch_frequency": 0,
     "plot_last_batch_frequency": 0,
-    "plot_last_batch_limit": 1,
+    "plot_last_batch_limit": 5
 }
 
 

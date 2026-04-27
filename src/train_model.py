@@ -34,9 +34,9 @@ def process_args():
     parser.add_argument("--max-wallclock-hours", dest="max_wallclock_hours", type=float, default=16,
                 help="Maximum wallclock hours before gracefully stopping training | default: 16")
     parser.add_argument("--checkpoint-buffer-minutes", dest="checkpoint_buffer_minutes", type=float, default=60,
-            help="Stop this many minutes before wallclock limit to save checkpoints/outputs | default: 60")
+                help="Stop this many minutes before wallclock limit to save checkpoints/outputs | default: 60")
     parser.add_argument("--max-optimizer-steps", dest="max_optimizer_steps", type=int, default=None,
-            help="Maximum optimizer steps for training | default: num_epochs * train_batches")
+             help="Maximum optimizer steps for training | default: num_epochs * train_batches")
     parser.add_argument("--validate-every-steps", dest="validate_every_steps", type=int, default=None, 
                 help="Validate every N optimizer steps | default: one epoch worth of optimizer steps")
 
@@ -340,9 +340,11 @@ class ModelTrainer:
         return stats
     
 
-    def _copy_batch_samples(self, batch, y_recon, z_latent, start=0, stop=None):
+    def _copy_batch_samples(self, batch, y_recon, z_latent, start=0, stop=None, flatten_z_latent=False):
         if batch is None:
             return None
+
+
 
         batch_samples = {
             "original_id": np.asarray(batch.original_id[start:stop]),
@@ -350,9 +352,12 @@ class ModelTrainer:
             "x_masked_image": batch.x_masked_image[start:stop],
             "y_target_image": batch.y_target_image[start:stop],
             "y_recon_image": y_recon[start:stop],
-            "z_latent_vector": z_latent[start:stop],
+            "z_latent_map": z_latent[start:stop],
             "y_specz_redshift": batch.y_specz_redshift[start:stop],
         }
+
+        if flatten_z_latent:
+            batch_samples["z_latent_vector"] = batch_samples["z_latent_map"].flatten(start_dim=1)
 
         return batch_samples
     
@@ -376,6 +381,7 @@ class ModelTrainer:
         y_target = sample_data["y_target_image"]
         y_recon = sample_data["y_recon_image"]
         y_redshift = sample_data["y_specz_redshift"]
+        z_latent = sample_data["z_latent_map"]
 
         if inverse_transform:
             x_masked = self.transform.inverse_transform(x_masked)
@@ -410,6 +416,7 @@ class ModelTrainer:
             y_target=y_target[sample_indices].detach().cpu().numpy(),
             y_recon=y_recon[sample_indices].detach().cpu().numpy(),
             y_redshift=y_redshift[sample_indices].detach().cpu().numpy(),
+            z_latent=z_latent[sample_indices].detach().cpu().numpy(),
             save_path=save_path,
             figure_title=figure_title,
             band_names=("g", "r", "i", "z", "y"),
@@ -453,6 +460,7 @@ class ModelTrainer:
                     batch=batch,
                     y_recon=y_recon,
                     z_latent=z_latent,
+                    flatten_z_latent=True
                 )
 
                 if writer is None:
@@ -472,6 +480,7 @@ class ModelTrainer:
                 batch=batch,
                 y_recon=y_recon,
                 z_latent=z_latent,
+                flatten_z_latent=True
             )
 
             self.save_sample_plots(sample_batch, file_name.split("_")[0], epoch="best")
@@ -647,7 +656,7 @@ class ModelTrainer:
             batch_samples = self._copy_batch_samples(
                 batch=batch,
                 y_recon=y_recon,
-                z_latent=z_latent,
+                z_latent=z_latent
             )
             self.save_sample_plots(batch_samples, "training", epoch=epoch)
 
@@ -721,7 +730,11 @@ class ModelTrainer:
                     )
 
         if not is_validation or self._should_plot_last_batch(epoch=epoch, optimizer_step=optimizer_step):
-            batch_samples = self._copy_batch_samples(batch=batch, y_recon=y_recon, z_latent=z_latent)
+            batch_samples = self._copy_batch_samples(
+                batch=batch, 
+                y_recon=y_recon, 
+                z_latent=z_latent
+            )
             self.save_sample_plots(batch_samples, split_label, epoch=epoch, optimizer_step=optimizer_step)
 
         metrics = {
@@ -993,11 +1006,11 @@ class ModelTrainer:
             epoch_progress = optimizer_steps_done / max(1, total_batches)
 
             self.logger.info(
-                f"========== Optimizer-Step Training "
-                f"| Epoch Progress [{epoch_progress:.2f}/{num_epochs}] "
-                f"| Optimizer Steps [{optimizer_steps_done}/{optimizer_step_budget}] "
-                f"| Next Validation In = {steps_this_round} "
-                f"| Elapsed Seconds = {time.perf_counter() - start_time:.2f}s =========="
+                f"[TRAIN] "
+                f"epoch_progress={epoch_progress:.2f}/{num_epochs}, "
+                f"optimizer_step={optimizer_steps_done}/{optimizer_step_budget}, "
+                f"next_validation_in={steps_this_round}, "
+                f"elapsed_seconds={time.perf_counter() - start_time:.2f}"
             )
 
             train_metrics, train_iter, epochs_completed = self.train_steps(
@@ -1011,7 +1024,6 @@ class ModelTrainer:
             validation_checks += 1
 
             epoch_progress = optimizer_steps_done / max(1, total_batches)
-
             valid_metrics = self.evaluate(
                 self.mae_model,
                 is_validation=True,
@@ -1020,7 +1032,7 @@ class ModelTrainer:
             )
 
             self.logger.info(
-                f"[VALID] check={validation_checks}, "
+                f"[VALID] validation_check={validation_checks}, "
                 f"optimizer_step={optimizer_steps_done}, "
                 f"objective_loss={valid_metrics['objective_loss']:.8f}, "
                 f"smooth_l1={valid_metrics['smooth_l1']:.8f}, "
@@ -1062,15 +1074,15 @@ class ModelTrainer:
                     f"best_valid_loss={self.best_valid_loss:.8f}"
                 )
 
-                self.save_model_checkpoint(
-                    file_name="best_model.pth",
-                    model_state_dict=self.best_model_state,
-                    extra_data={
-                        "best_epoch": self.best_model_epoch,
-                        "best_optimizer_step": self.best_model_optimizer_step,
-                        "best_valid_loss": self.best_valid_loss,
-                    },
-                )
+                # self.save_model_checkpoint(
+                #     file_name="best_model.pth",
+                #     model_state_dict=self.best_model_state,
+                #     extra_data={
+                #         "best_epoch": self.best_model_epoch,
+                #         "best_optimizer_step": self.best_model_optimizer_step,
+                #         "best_valid_loss": self.best_valid_loss,
+                #     },
+                # )
 
             if self._should_earlystop():
                 stop_reason = "validation_earlystop"
@@ -1186,15 +1198,15 @@ if __name__ == "__main__":
 # make sure it works so far:
 """
 python src/train_model.py \
---config-file configs/train_config.json \
+--config-file configs/overfit_config.json \
 --input-folder data/preprocessed/galaxiesml_tiny \
---output-folder experiments/train_galaxiesml_tiny \
+--output-folder experiments/train_mae_tiny_debug_overfit \
 --gpu-memory-fraction 0.9 \
 --num-cores 5 \
---max-optimizer-steps 200 \
---validate-every-steps 10 \
---max-wallclock-hours 1 \
---checkpoint-buffer-minutes 45
+--max-optimizer-steps 500 \
+--validate-every-steps 50 \
+--max-wallclock-hours 1.25 \
+--checkpoint-buffer-minutes 25 \
 --debug
 """
 

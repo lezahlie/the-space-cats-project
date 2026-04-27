@@ -1,0 +1,39 @@
+{
+    "_description": "tuning config with hyper-parameters for safe tuning",
+    "num_epochs": 100,
+
+    "ssim_loss_weight": 0.0,
+
+    "batch_size": 64,
+    "learn_rate": 1e-4,
+    "weight_decay": 0.0,
+    "optim_beta1": 0.9,
+    "optim_beta2": 0.999,
+    "optim_type": "adamw",
+
+    "lr_scheduler": "plateau",
+    "lr_scheduler_patience": 2,
+    "lr_scheduler_factor": 0.2,
+    "lr_scheduler_min_lr": 1e-6,
+
+    "hidden_layers": 3,
+    "hidden_dims": 128,
+    "latent_dims": 64,
+    "conv_kernel": 3,
+    "conv_stride": 2,
+
+    "activation_function": "relu",
+    "norm_layer": "none",
+    "negative_slope": 0.01,
+    "hidden_factor": 2.0,
+    "ascending_channels": true,
+
+    "enable_earlystop": true,
+    "earlystop_patience": 4,
+    "earlystop_min_delta": 0.0,
+
+    "log_epoch_frequency": 0,
+    "log_batch_frequency": 0,
+    "plot_last_batch_frequency": 200,
+    "plot_last_batch_limit": 3
+}

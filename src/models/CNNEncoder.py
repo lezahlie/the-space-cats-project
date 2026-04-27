@@ -1,4 +1,4 @@
-from src.utils.common import pt, Optional
+from src.utils.common import pt
 NN = pt.nn
 F = NN.functional
 
@@ -9,15 +9,15 @@ class CNNEncoder(NN.Module):
         input_channels: int,
         input_size: int,
         conv_kernel: int=3,
-        conv_stride: int=1,
+        conv_stride: int=2,
         hidden_layers: int=3, 
-        hidden_dims: int=256, 
+        hidden_dims: int=128, 
         hidden_factor: float=2.0,
-        latent_dims: int=128, 
+        latent_dims: int=64, 
         activation_function: str = "relu",
         negative_slope: float = 0.01,
         norm_layer: str = "none",
-        ascending_channels: bool = False
+        ascending_channels: bool = True
     ): 
         super(CNNEncoder, self).__init__()
 
@@ -101,26 +101,17 @@ class CNNEncoder(NN.Module):
             )
             output_size = compute_output_size(output_size)
 
-        # compute the flattened spatial dims of the hidden output
-        self.output_size_HxW = output_size ** 2
-        reduced_channels = int(max(self.hidden_per_layer[-1] // self.hidden_factor, 4))
+
         # init encoder output layer: project hidden_output => latent_z
-        # Flatten all dims except the batches
-        # Linear Input Shape: (N, C * H * W) 
-        # Linear Output Shape: (N, L), L=self.latent_dims
+        # 1x1 conv2d to reduce spatial size while retaining spatial detail
         self.output_layer = NN.Sequential(
             NN.Conv2d(
                 in_channels=self.hidden_per_layer[-1],
-                out_channels=reduced_channels,
+                out_channels=self.latent_dims,
                 kernel_size=1,
                 stride=1,
                 padding=0,
-            ),
-            NN.Flatten(start_dim=1),    
-            NN.Linear(                  
-                in_features=reduced_channels * self.output_size_HxW,
-                out_features=self.latent_dims,
-            )   
+            )
         )
 
         # weight initialization — apply AFTER all layers are built
@@ -216,28 +207,24 @@ def test_main(args):
         args.random_seed
     )
 
-    batch_size = 20
     input_channels = 5
     input_size = 64
-    latent_dims = 128
+    batch_size = 20
+    latent_dims = 64
+    hidden_layers= 3
+    conv_stride = 2
 
+    spatial_size = input_size // (conv_stride ** hidden_layers)
     batch_input_shape = (batch_size, input_channels, input_size, input_size)
-    expected_encoder_shape = (batch_size, latent_dims)
+    expected_encoder_shape = (batch_size, latent_dims, spatial_size, spatial_size)
 
     model = CNNEncoder(
         input_channels, 
-        input_size, 
-        conv_kernel=3,
-        conv_stride=1,
-        hidden_layers = 3,
-        hidden_dims=128,
-        hidden_factor=2.0,
-        latent_dims=latent_dims,
-        activation_function="leaky",
-        negative_slope= 0.01,
-        norm_layer="group",
-        ascending_channels=True
+        input_size,
+        hidden_layers = hidden_layers,
+        latent_dims = latent_dims
     )
+
 
     dummy_input_batch = pt.randn(batch_input_shape)
     logger.debug(f"Batch Input shape: {dummy_input_batch.shape}")

@@ -52,7 +52,7 @@ class MaskedAutoencoder(NN.Module):
         self.negative_slope = config.get("negative_slope", 0.01)
         self.norm_layer = config.get("norm_layer", "none")
         self.conv_kernel = config.get("conv_kernel", 3)
-        self.conv_stride = config.get("conv_stride", 1)
+        self.conv_stride = config.get("conv_stride", 2)
 
         assert self.norm_layer in {"none", "batch", "group"}, "norm_layer must be one of: 'none', 'batch', 'group'"
         assert self.activation_function in {"relu", "tanh", "leaky"}, "activation_function must be one of: 'relu', 'tanh', 'leaky'"
@@ -62,15 +62,16 @@ class MaskedAutoencoder(NN.Module):
         self.encoder = CNNEncoder(
             self.input_channels,
             self.input_size,
-            hidden_layers = self.hidden_layers,
-            hidden_dims= self.hidden_dims,
-            hidden_factor= self.hidden_factor,
-            latent_dims= self.latent_dims,
-            activation_function = self.activation_function,
-            negative_slope = self.negative_slope,
-            norm_layer = self.norm_layer,
+            hidden_layers=self.hidden_layers,
+            hidden_dims=self.hidden_dims,
+            hidden_factor=self.hidden_factor,
+            latent_dims=self.latent_dims,
+            activation_function=self.activation_function,
+            negative_slope=self.negative_slope,
+            norm_layer=self.norm_layer,
             conv_kernel=self.conv_kernel,
-            conv_stride=2
+            conv_stride=self.conv_stride,
+            ascending_channels=self.ascending_channels,
         )
 
         self.encoder.to(device=self.device)
@@ -87,15 +88,16 @@ class MaskedAutoencoder(NN.Module):
         self.decoder = CNNDecoder(
             self.input_channels,
             self.input_size,
-            hidden_layers = self.hidden_layers,
-            hidden_dims= self.hidden_dims,
-            hidden_factor= self.hidden_factor,
-            latent_dims= self.latent_dims,
-            activation_function = self.activation_function,
-            negative_slope = self.negative_slope,
-            norm_layer = self.norm_layer,
+            hidden_layers=self.hidden_layers,
+            hidden_dims=self.hidden_dims,
+            hidden_factor=self.hidden_factor,
+            latent_dims=self.latent_dims,
+            activation_function=self.activation_function,
+            negative_slope=self.negative_slope,
+            norm_layer=self.norm_layer,
             conv_kernel=self.conv_kernel,
-            conv_stride=1
+            conv_stride=self.conv_stride,
+            ascending_channels=self.ascending_channels,
         )
 
         self.decoder.to(device=self.device)
@@ -164,15 +166,21 @@ def test_main(args):
         args.random_seed
     )
 
-    batch_size = 32
+
     input_channels = 5
     input_size = 64
-    latent_dims = 128
-
-    batch_input_shape = (batch_size, input_channels, input_size, input_size)
-    expected_encoder_shape = (batch_size, latent_dims)
 
     config = AttrDict(DEFAULT_CONFIG)
+    
+    batch_input_shape = (config.batch_size, input_channels, input_size, input_size)
+    spatial_size = input_size // (config.conv_stride ** config.hidden_layers)
+    expected_encoder_shape = (
+        config.batch_size,
+        config.latent_dims,
+        spatial_size,
+        spatial_size,
+    )
+    
     config.input_shape = batch_input_shape[1:]
     model = MaskedAutoencoder(config)
 

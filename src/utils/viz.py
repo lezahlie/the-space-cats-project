@@ -34,6 +34,7 @@ def plot_single_sample(
     x_masked,
     y_target,
     y_recon,
+    z_latent,
     save_path,
     figure_title=None,
     band_names=("g", "r", "i", "z", "y"),
@@ -45,15 +46,21 @@ def plot_single_sample(
     cbar_tick_fs = 16
     
     x_masked_nan = set_masked_values(x_masked, masked_map, value=np.nan)
+    
     y_target = np.asarray(y_target, dtype=np.float32)
-    y_recon = np.asarray(y_recon, dtype=np.float32)
     target_vminmax = np.nanmin(y_target).astype(float), np.nanmax(y_target).astype(float)
+
+    y_recon = np.asarray(y_recon, dtype=np.float32)
     recon_vminmax = np.nanmin(y_recon).astype(float), np.nanmax(y_recon).astype(float)
+
+    z_latent = np.asarray(z_latent, dtype=np.float32)
+    latent_vminmax = np.nanmin(z_latent).astype(float), np.nanmax(z_latent).astype(float)
 
     row_data = [
         ("Masked X", x_masked_nan, target_vminmax),
         ("Target Y", y_target, target_vminmax),
-        ("Recon Y", y_recon, recon_vminmax)
+        ("Recon Y", y_recon, recon_vminmax),
+        ("Latent Z", z_latent, latent_vminmax),
     ]
 
     num_rows = len(row_data)
@@ -126,6 +133,7 @@ def plot_single_sample(
     plt.close(fig)
 
 
+
 def plot_image_samples(
     original_id,
     masked_map,
@@ -133,6 +141,7 @@ def plot_image_samples(
     y_target,
     y_recon,
     y_redshift,
+    z_latent,
     save_path,
     figure_title=None,
     band_names=("g", "r", "i", "z", "y"),
@@ -169,6 +178,7 @@ def plot_image_samples(
             x_masked=x_masked[sample_idx],
             y_target=y_target[sample_idx],
             y_recon=y_recon[sample_idx],
+            z_latent=z_latent[sample_idx],
             save_path=sample_save_path,
             figure_title=sample_title,
             band_names=band_names,
