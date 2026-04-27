@@ -21,6 +21,7 @@ MASK_RATIO="${MASK_RATIO:-0.0}"
 PERSON="${PERSON:-user}"
 MASK_LABEL="${MASK_RATIO//./_}"
 
+CONFIG_FILE="$PROJECT_DIR/configs/tune_default.json"
 PREP_DIR="$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL/$DATASET"
 OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_${PERSON}_${MASK_RATIO}"
 mkdir -p "$PROJECT_DIR/logs"
@@ -44,6 +45,7 @@ fi
 echo "starting tuning | person=$PERSON mask_ratio=$MASK_RATIO output=$OUTPUT_DIR"
 
 python "$PROJECT_DIR/src/tune_model.py" \
+    --config-file "$CONFIG_FILE" \
     --input-folder "$PREP_DIR" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \

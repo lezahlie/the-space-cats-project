@@ -1,5 +1,5 @@
 {
-    "_description": "tuning config with hyper-parameters for safe tuning",
+    "_description": "tuning config with baseline hyper-parameters",
     "num_epochs": 100,
 
     "ssim_loss_weight": 0.0,

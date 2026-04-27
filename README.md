@@ -267,7 +267,7 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/tune_model.py \
-    --config-file "configs/tune_defaults.json" \
+    --config-file "configs/tune_default.json" \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
     --output-folder "experiments/tune_debug_tiny" \
     --gpu-memory-fraction 0.9 \
@@ -282,7 +282,7 @@ Dataset download page: https://zenodo.org/records/11117528
 
     ```bash
     python src/train_model.py \
-    --config-file "configs/train_defaults.json" \
+    --config-file "configs/train_overfit.json" \
     --input-folder "data/preprocessed/galaxiesml_tiny" \
     --output-folder "experiments/train_overfit_tiny" \
     --gpu-memory-fraction 0.9 \
@@ -342,7 +342,7 @@ Dataset download page: https://zenodo.org/records/11117528
 2. Each trial runs for at most `--tune-optimizer-steps` optimizer updates, unless capped earlier by `num_epochs * batches_per_epoch`.
 3. A trial stops early if either of these happens:
    - its validation loss does not improve for `epoch_patience=4` consecutive validation checks
-     - `epoch_patience=4` is defined in `configs/tune_defaults.json`)
+     - `epoch_patience=4` is defined in `configs/tune_default.json`)
    - after a current best exists, it fails to beat the current best validation loss within `tune_patience=4 * validate_every_steps=100` optimizer updates after the current best trial's best optimizer step
      - `tune_patience` and `validate_every_steps` are defined in the pace scripts and in the command below
 4. Tuning only runs `60` total trials now with early stopping per-trial and across trials
@@ -350,7 +350,7 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ```bash
 python src/tune_model.py \
---config-file "configs/tune_defaults.json" \
+--config-file "configs/tune_default.json" \
 --input-folder "data/preprocessed/galaxiesml_small" \
 --output-folder "experiments/tune_mae_small_<first_name>_<mask>" \
 --gpu-memory-fraction 0.9 \

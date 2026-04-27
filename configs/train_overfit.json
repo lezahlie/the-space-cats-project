@@ -3,7 +3,7 @@
 
     "num_epochs": 500,
 
-    "ssim_loss_weight": 0.0,
+    "ssim_loss_weight": 0.5,
 
     "batch_size": 16,
     "learn_rate": 5e-4,
