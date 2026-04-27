@@ -901,7 +901,7 @@ class HyperparameterSearch(ModelTrainer):
             "log_epoch_frequency": 1,
             "log_batch_frequency": 0,
             "plot_last_batch_frequency": 500,
-            "plot_last_batch_limit": 3
+            "plot_last_batch_limit": 10
         })
 
         best_overall_path = self.output_folder / "best_overall_config.json"
