@@ -24,7 +24,7 @@ DEFAULT_CONFIG = {
     "hidden_layers": 3,
     "hidden_dims": 128,
     "latent_dims": 64,
-    "conv_kernel": 3,
+    "conv_kernel": 5,
     "conv_stride": 2,
 
     "activation_function": "relu",

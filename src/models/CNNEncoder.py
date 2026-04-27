@@ -8,7 +8,7 @@ class CNNEncoder(NN.Module):
         self, 
         input_channels: int,
         input_size: int,
-        conv_kernel: int=3,
+        conv_kernel: int=5,
         conv_stride: int=2,
         hidden_layers: int=3, 
         hidden_dims: int=128, 

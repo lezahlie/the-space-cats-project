@@ -7,7 +7,7 @@ class CNNDecoder(NN.Module):
         self, 
         input_channels: int,
         input_size: int,
-        conv_kernel: int=3,
+        conv_kernel: int=5,
         conv_stride: int=2,
         hidden_layers: int=3, 
         hidden_dims: int=128, 
@@ -41,6 +41,7 @@ class CNNDecoder(NN.Module):
             raise ValueError(f"conv_kernel must be odd and at least 3 for symmetric padding, not '{conv_kernel}'")
         self.conv_kernel = conv_kernel
         self.conv_stride = conv_stride
+        self.upsample_stride = 1
         # symmetric padding that works with stride >= 1 and odd kernels only
         self.conv_padding = self.conv_kernel  // 2
 
@@ -100,8 +101,9 @@ class CNNDecoder(NN.Module):
                         in_channels=in_chan,
                         out_channels=out_chan,
                         kernel_size=self.conv_kernel,
-                        stride=1,
-                        padding=self.conv_padding
+                        stride=self.upsample_stride,
+                        padding=self.conv_padding,
+                        padding_mode="reflect",
                     ),
                     self._get_norm_layer(out_chan),
                     self._get_activation(),
@@ -120,8 +122,9 @@ class CNNDecoder(NN.Module):
                 in_channels=self.hidden_per_layer[-1],
                 out_channels=self.input_channels,
                 kernel_size=self.conv_kernel,
-                stride=1,
-                padding=self.conv_padding
+                stride=self.upsample_stride,
+                padding=self.conv_padding,
+                padding_mode="reflect",
             ),
         )
 
@@ -131,21 +134,6 @@ class CNNDecoder(NN.Module):
         # CONTRIBUTION END: Decoder Initialization Part 2
         # ==================================================
 
-
-    def _get_output_padding(self, in_size: int, target_size: int) -> int:
-        output_padding = target_size - (
-            (in_size - 1) * self.conv_stride
-            - 2 * self.conv_padding
-            + self.conv_kernel
-        )
-        if not (0 <= output_padding < self.conv_stride):
-            raise ValueError(
-                f"Invalid output_padding={output_padding} for "
-                f"in_size={in_size}, target_size={target_size}, "
-                f"kernel={self.conv_kernel}, stride={self.conv_stride}, "
-                f"padding={self.conv_padding}"
-            )
-        return output_padding
 
     def _get_activation(self):
         if self.activation_function == "relu":

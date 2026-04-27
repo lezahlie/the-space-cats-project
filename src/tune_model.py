@@ -221,7 +221,7 @@ def get_stage_grids(best_config: dict) -> dict:
         4: {
             "name": "stage4_network",
             "grid": {
-                "conv_kernel": [3, 5],
+                "conv_kernel": [5, 7],
                 "activation_function": ["relu", "leaky"]
             },
         },
