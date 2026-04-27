@@ -48,23 +48,19 @@ def plot_single_sample(
     x_masked_nan = set_masked_values(x_masked, masked_map, value=np.nan)
     
     y_target = np.asarray(y_target, dtype=np.float32)
-    target_vminmax = np.nanmin(y_target).astype(float), np.nanmax(y_target).astype(float)
-
     y_recon = np.asarray(y_recon, dtype=np.float32)
-    recon_vminmax = np.nanmin(y_recon).astype(float), np.nanmax(y_recon).astype(float)
-
     z_latent = np.asarray(z_latent, dtype=np.float32)
-    latent_vminmax = np.nanmin(z_latent).astype(float), np.nanmax(z_latent).astype(float)
 
     row_data = [
-        ("Masked X", x_masked_nan, target_vminmax),
-        ("Target Y", y_target, target_vminmax),
-        ("Recon Y", y_recon, recon_vminmax),
-        ("Latent Z", z_latent, latent_vminmax),
+        ("Masked X", x_masked_nan),
+        ("Target Y", y_target),
+        ("Recon Y", y_recon),
+        ("Latent Z", z_latent),
     ]
 
     num_rows = len(row_data)
     num_bands = len(x_masked)
+
 
     def _set_cbar_ticks(cbar, vmin=None, vmax=None):
         ticks = np.linspace(vmin, vmax, 5)
@@ -104,12 +100,24 @@ def plot_single_sample(
             )
 
 
-    fig, axes = plt.subplots(num_rows, num_bands, figsize=(5 * num_bands, num_rows*4), squeeze=False)
+    fig, axes = plt.subplots(
+        num_rows,
+        num_bands,
+        figsize=(5 * num_bands, num_rows * 4),
+        squeeze=False,
+    )
 
-    for row_idx, (row_name, row_images, (vmin_val, vmax_val)) in enumerate(row_data):
+    for row_idx, (row_name, row_images) in enumerate(row_data):
         for band_idx, band_name in enumerate(band_names):
             row_label = row_name if band_idx == 0 else None
             col_title = f"Channel {band_name.upper()}" if row_idx == 0 else None
+
+            if row_name in {"Masked X", "Target Y", "Recon Y"}:
+                vmin_val = float(np.nanmin(y_target[band_idx]))
+                vmax_val = float(np.nanmax(y_target[band_idx]))
+            else:
+                vmin_val = float(np.nanmin(z_latent[band_idx]))
+                vmax_val = float(np.nanmax(z_latent[band_idx]))
 
             _draw_panel(
                 axes[row_idx, band_idx],
@@ -117,7 +125,7 @@ def plot_single_sample(
                 row_label=row_label,
                 col_title=col_title,
                 vmin=vmin_val,
-                vmax=vmax_val
+                vmax=vmax_val,
             )
 
     if figure_title:

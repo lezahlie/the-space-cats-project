@@ -29,11 +29,11 @@
     "ascending_channels": true,
 
     "enable_earlystop": true,
-    "earlystop_patience": 4,
+    "earlystop_patience": 5,
     "earlystop_min_delta": 0.0,
 
     "log_epoch_frequency": 0,
     "log_batch_frequency": 0,
     "plot_last_batch_frequency": 200,
-    "plot_last_batch_limit": 3
+    "plot_last_batch_limit": 5
 }

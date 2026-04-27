@@ -964,13 +964,13 @@ class ModelTrainer:
     ):
         self.mae_model = self.mae_model.to(self.device)
 
-        num_epochs = self.config["num_epochs"]
+        config_num_epochs = int(self.config["num_epochs"])
         total_batches = len(self.train_loader)
 
         if total_batches < 1:
             raise ValueError("train_loader has no batches; cannot train.")
 
-        total_possible_optimizer_steps = total_batches * num_epochs
+        total_possible_optimizer_steps = total_batches * config_num_epochs
 
         if max_optimizer_steps is None:
             optimizer_step_budget = total_possible_optimizer_steps
@@ -979,6 +979,8 @@ class ModelTrainer:
                 total_possible_optimizer_steps,
                 max(1, int(max_optimizer_steps)),
             )
+
+        effective_num_epochs = optimizer_step_budget / max(1, total_batches)
 
         if validate_every_steps is None:
             validate_every_steps = total_batches
@@ -999,7 +1001,7 @@ class ModelTrainer:
 
         checkpoint_buffer_seconds = float(checkpoint_buffer_minutes) * 60.0
 
-        while epoch <= num_epochs and optimizer_steps_done < optimizer_step_budget:
+        while optimizer_steps_done < optimizer_step_budget:
             remaining_optimizer_steps = optimizer_step_budget - optimizer_steps_done
             steps_this_round = min(validate_every_steps, remaining_optimizer_steps)
 
@@ -1007,7 +1009,7 @@ class ModelTrainer:
 
             self.logger.info(
                 f"[TRAIN] "
-                f"epoch_progress={epoch_progress:.2f}/{num_epochs}, "
+                f"epoch_progress={epoch_progress:.2f}/{effective_num_epochs:.2f}, "
                 f"optimizer_step={optimizer_steps_done}/{optimizer_step_budget}, "
                 f"next_validation_in={steps_this_round}, "
                 f"elapsed_seconds={time.perf_counter() - start_time:.2f}"
@@ -1020,7 +1022,7 @@ class ModelTrainer:
             )
 
             optimizer_steps_done += int(train_metrics["optimizer_steps"])
-            epoch = min(num_epochs, epoch + epochs_completed)
+            epoch = epoch + epochs_completed
             validation_checks += 1
 
             epoch_progress = optimizer_steps_done / max(1, total_batches)
@@ -1054,6 +1056,7 @@ class ModelTrainer:
                 "mode": "optimizer_steps",
                 "epoch": round(epoch_progress, 3),
                 "epoch_progress": epoch_progress,
+                "effective_num_epochs": effective_num_epochs,
                 "validation_check": validation_checks,
                 "optimizer_step": optimizer_steps_done,
                 "learning_rate": current_lr,
