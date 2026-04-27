@@ -169,13 +169,6 @@ def get_stage_grids(best_config: dict) -> dict:
     best_batch_size = best_config.get("batch_size", 64)
     fine_batch_size = base2_neighbors(best_batch_size, lower=16, upper=128)
 
-    best_weight_decay = best_config.get("weight_decay", 0.0)
-    fine_weight_decay = (
-        [0.0, 1e-6, 1e-5]
-        if best_weight_decay == 0.0
-        else log_neighbors(best_weight_decay, sigs=(1.0, 3.0, 5.0), lower=1e-8, upper=1e-3)
-    )
-
     if best_config.get("debug", False):
         return {
             1: {"name": "stage1_learn_rate", "grid": {"learn_rate": [1e-4, 1e-3]}},

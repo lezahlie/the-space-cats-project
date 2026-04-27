@@ -408,7 +408,11 @@ class ModelTrainer:
         max_samples = min(total_samples, self.config["plot_last_batch_limit"])
         sample_indices = np.random.choice(total_samples, size=max_samples, replace=False)
 
-        save_path = self.plots_dir / file_name
+        save_dir = self.plots_dir / split
+        if not save_dir.exists():
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+        save_path = save_dir / file_name
         plot_image_samples(
             original_id=[original_id[i] for i in sample_indices],
             masked_map=masked_map[sample_indices].detach().cpu().numpy(),
@@ -652,7 +656,7 @@ class ModelTrainer:
                         f"optimizer_steps={optimizer_steps}"
                     )
 
-        if self.config["debug"] and self._should_plot_last_batch(epoch=epoch):
+        if self._should_plot_last_batch(epoch=epoch):
             batch_samples = self._copy_batch_samples(
                 batch=batch,
                 y_recon=y_recon,
@@ -873,7 +877,7 @@ class ModelTrainer:
             training_mode="epochs",
         )
 
-    def train_steps(self, model, train_iter, max_optimizer_steps):
+    def train_steps(self, model, train_iter, max_optimizer_steps, optimizer_step_offset=0):
         model.train()
         self.logger.debug(f"[TRAIN] model.training={model.training}")
 
@@ -924,6 +928,19 @@ class ModelTrainer:
                 self.optimizer.step()
 
                 optimizer_steps += 1
+                global_optimizer_step = optimizer_step_offset + optimizer_steps
+
+                if self._should_plot_last_batch(optimizer_step=global_optimizer_step):
+                    batch_samples = self._copy_batch_samples(
+                        batch=batch,
+                        y_recon=y_recon,
+                        z_latent=z_latent,
+                    )
+                    self.save_sample_plots(
+                        batch_samples,
+                        "training",
+                        optimizer_step=global_optimizer_step,
+                    )
 
                 total_loss += loss.detach().item()
                 total_smooth_l1 += smooth_l1.detach().item()
@@ -942,14 +959,6 @@ class ModelTrainer:
                 if batch_idx == total_batches:
                     epochs_completed += 1
                     train_iter = iter(enumerate(self.train_loader, start=1))
-
-        if self.config["debug"] and self._should_plot_last_batch(optimizer_step=optimizer_steps):
-            batch_samples = self._copy_batch_samples(
-                batch=batch,
-                y_recon=y_recon,
-                z_latent=z_latent
-            )
-            self.save_sample_plots(batch_samples, "training", optimizer_step=optimizer_steps)
 
 
         denom = max(1, optimizer_steps)
@@ -1028,6 +1037,7 @@ class ModelTrainer:
                 self.mae_model,
                 train_iter=train_iter,
                 max_optimizer_steps=steps_this_round,
+                optimizer_step_offset=optimizer_steps_done
             )
 
             optimizer_steps_done += int(train_metrics["optimizer_steps"])
