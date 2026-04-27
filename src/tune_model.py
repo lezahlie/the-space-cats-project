@@ -242,7 +242,6 @@ def get_stage_grids(best_config: dict) -> dict:
             "name": "stage7_best_fine",
             "grid": {
                 "learn_rate": fine_lr,
-                "weight_decay": fine_weight_decay,
                 "batch_size": fine_batch_size,
             },
         },
