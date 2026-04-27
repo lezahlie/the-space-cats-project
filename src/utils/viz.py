@@ -366,6 +366,12 @@ def plot_learning_curves(history, save_path):
         ha="right",
     )
 
+    sci_formatter = mtick.FuncFormatter(
+        lambda x, pos: "0" if abs(x) < 1e-12 else f"{x:.1e}"
+    )
+    axes[0].yaxis.set_major_formatter(sci_formatter)
+    ax_loss.yaxis.set_major_formatter(sci_formatter)
+    
     ax_loss.set_xlabel(x_label, fontsize=label_fs)
     ax_loss.set_ylabel("Smooth-L1", fontsize=label_fs)
     ax_ssim.set_ylabel("1-SSIM", fontsize=label_fs)
