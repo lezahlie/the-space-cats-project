@@ -221,7 +221,7 @@ def get_stage_grids(best_config: dict) -> dict:
         4: {
             "name": "stage4_network",
             "grid": {
-                "conv_kernel": [5, 7],
+                "conv_kernel": [3, 5],
                 "activation_function": ["relu", "leaky"]
             },
         },
@@ -234,7 +234,7 @@ def get_stage_grids(best_config: dict) -> dict:
         6: {
             "name": "stage6_optimizer",
             "grid": {
-                "weight_decay": [0.0, 1e-5, 5e-5, 1e-4],
+                "weight_decay": [0.0, 1e-5, 1e-4],
                 "optim_beta1": [0.85, 0.9],
                 "optim_beta2": [0.99, 0.999],
             },
@@ -244,7 +244,6 @@ def get_stage_grids(best_config: dict) -> dict:
             "grid": {
                 "learn_rate": fine_lr,
                 "batch_size": fine_batch_size,
-                "weight_decay": fine_weight_decay
             },
         },
     }

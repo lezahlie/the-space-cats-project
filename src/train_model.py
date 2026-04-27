@@ -652,7 +652,7 @@ class ModelTrainer:
                         f"optimizer_steps={optimizer_steps}"
                     )
 
-        if optimizer_steps > 0 and self.config["debug"] and self._should_plot_last_batch(epoch=epoch):
+        if self.config["debug"] and self._should_plot_last_batch(epoch=epoch):
             batch_samples = self._copy_batch_samples(
                 batch=batch,
                 y_recon=y_recon,
@@ -942,6 +942,15 @@ class ModelTrainer:
                 if batch_idx == total_batches:
                     epochs_completed += 1
                     train_iter = iter(enumerate(self.train_loader, start=1))
+
+        if self.config["debug"] and self._should_plot_last_batch(optimizer_step=optimizer_steps):
+            batch_samples = self._copy_batch_samples(
+                batch=batch,
+                y_recon=y_recon,
+                z_latent=z_latent
+            )
+            self.save_sample_plots(batch_samples, "training", optimizer_step=optimizer_steps)
+
 
         denom = max(1, optimizer_steps)
         metrics = {

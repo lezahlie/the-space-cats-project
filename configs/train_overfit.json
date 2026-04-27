@@ -20,7 +20,7 @@
     "hidden_layers": 3,
     "hidden_dims": 256,
     "latent_dims": 256,
-    "conv_kernel": 5,
+    "conv_kernel": 3,
     "conv_stride": 2,
 
     "activation_function": "leaky",

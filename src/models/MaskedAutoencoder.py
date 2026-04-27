@@ -51,7 +51,7 @@ class MaskedAutoencoder(NN.Module):
         # negative slope for leaky relu activation and weight initialization 
         self.negative_slope = config.get("negative_slope", 0.01)
         self.norm_layer = config.get("norm_layer", "none")
-        self.conv_kernel = config.get("conv_kernel", 5)
+        self.conv_kernel = config.get("conv_kernel", 3)
         self.conv_stride = config.get("conv_stride", 2)
 
         assert self.norm_layer in {"none", "batch", "group"}, "norm_layer must be one of: 'none', 'batch', 'group'"
