@@ -392,16 +392,16 @@ class ModelTrainer:
             masked_map_broadcast = masked_map.repeat(1, x_masked.shape[1], 1, 1)
             x_masked = x_masked * (masked_map_broadcast <= 0.5)
 
-        file_name = f"{split}.png"
+        file_name = f"{split}.pdf"
         figure_title = f"{split.title()} Sample"
 
         if optimizer_step is not None:
             optimizer_step = int(optimizer_step)
-            file_name = file_name.replace(".png", f"_step_{optimizer_step}.png")
+            file_name = file_name.replace(".pdf", f"_step_{optimizer_step}.pdf")
             figure_title += f" | Optimizer Step #{optimizer_step}"
 
         elif epoch is not None:
-            file_name = file_name.replace(".png", f"_epoch_{epoch}.png")
+            file_name = file_name.replace(".pdf", f"_epoch_{epoch}.pdf")
             figure_title += f" | Epoch #{epoch}"
 
         total_samples = len(original_id)
@@ -411,7 +411,7 @@ class ModelTrainer:
         save_dir = self.plots_dir / split
         if not save_dir.exists():
             save_dir.mkdir(parents=True, exist_ok=True)
-            
+
         save_path = save_dir / file_name
         plot_image_samples(
             original_id=[original_id[i] for i in sample_indices],
@@ -498,7 +498,7 @@ class ModelTrainer:
 
     def save_result_metrics(self, test_metrics):
         history_path = self.metrics_dir / "model_history.json"
-        plot_path = self.plots_dir / "learning_curves.png"
+        plot_path = self.plots_dir / "learning_curves.pdf"
 
         save_to_json(history_path, self.history)
         plot_learning_curves(self.history, plot_path)

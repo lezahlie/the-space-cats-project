@@ -137,7 +137,6 @@ def plot_single_sample(
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches="tight")
-    fig.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -371,7 +370,7 @@ def plot_learning_curves(history, save_path):
     )
     axes[0].yaxis.set_major_formatter(sci_formatter)
     ax_loss.yaxis.set_major_formatter(sci_formatter)
-    
+
     ax_loss.set_xlabel(x_label, fontsize=label_fs)
     ax_loss.set_ylabel("Smooth-L1", fontsize=label_fs)
     ax_ssim.set_ylabel("1-SSIM", fontsize=label_fs)
@@ -393,7 +392,7 @@ def plot_learning_curves(history, save_path):
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig.tight_layout()
-    fig.savefig(save_path, bbox_inches="tight", dpi=300)
+    fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
 
 # ==================================================
