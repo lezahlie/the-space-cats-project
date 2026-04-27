@@ -37,7 +37,7 @@ nvidia-smi
 
 if [ ! -d "$PREP_DIR" ]; then
     echo "preprocessing $DATASET mask_ratio=$MASK_RATIO ..."
-    srun -n 1 -c 6 python "$PROJECT_DIR/src/preprocess_data.py" \
+    python "$PROJECT_DIR/src/preprocess_data.py" \
         --input-folder "$PROJECT_DIR/data/$DATASET" \
         --output-folder "$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL" \
         --num-cores "$NUM_CORES" \
@@ -53,7 +53,7 @@ fi
 
 echo "starting tuning | person=$PERSON mask_ratio=$MASK_RATIO output=$OUTPUT_DIR"
 
-srun -n 1 -c 6 python "$PROJECT_DIR/src/train_model.py" \
+python "$PROJECT_DIR/src/train_model.py" \
     --config-file "$CONFIG_FILE" \
     --input-folder "$PREP_DIR" \
     --output-folder "$OUTPUT_DIR" \

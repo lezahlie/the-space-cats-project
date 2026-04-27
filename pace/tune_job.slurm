@@ -23,7 +23,7 @@ MASK_LABEL="${MASK_RATIO//./_}"
 
 CONFIG_FILE="$PROJECT_DIR/configs/tune_default.json"
 PREP_DIR="$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL/$DATASET"
-OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_${PERSON}_${MASK_RATIO}"
+OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_small_${PERSON}_${MASK_RATIO}"
 mkdir -p "$PROJECT_DIR/logs"
 echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-?} mask_ratio=$MASK_RATIO person=$PERSON"
 

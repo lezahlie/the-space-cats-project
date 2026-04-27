@@ -6,8 +6,8 @@
 #SBATCH --partition=ice-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=5 # 5 requested, script uses 4, 1 for the OS
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=6   # 6 requested, script uses 5, 1 for the OS
+#SBATCH --mem=24G           # always ask for more than you need
 #SBATCH --gres=gpu:1
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/test_%j.out
@@ -18,7 +18,7 @@ set -euo pipefail
 
 PROJECT_DIR="$HOME/the-space-cats-project"
 DATASET="galaxiesml_tiny"
-NUM_CORES=4
+NUM_CORES=5
 
 PREP_DIR="$PROJECT_DIR/data/preprocessed/mask_0_0/$DATASET"
 OUTPUT_DIR="$PROJECT_DIR/experiments/test_train"
@@ -40,7 +40,9 @@ if [ ! -d "$PREP_DIR" ]; then
         --mask-ratio 0.0 \
         --debug
 fi
+
 echo "starting test train | output=$OUTPUT_DIR"
+
 python "$PROJECT_DIR/src/train_model.py" \
     --config-file "$PROJECT_DIR/configs/train_overfit.json" \
     --input-folder "$PREP_DIR" \
@@ -52,4 +54,5 @@ python "$PROJECT_DIR/src/train_model.py" \
     --max-wallclock-hours 1 \
     --checkpoint-buffer-minutes 15
     --debug
+
 echo "done | $OUTPUT_DIR"
