@@ -194,17 +194,15 @@ def get_stage_grids(best_config: dict) -> dict:
         3: {
             "name": "stage3_capacity",
             "grid": [
-                {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 32},
                 {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 64},
                 {"hidden_layers": 2, "hidden_dims": 128, "latent_dims": 128},
+
+                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 64},
+                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 128},
 
                 {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 64},
                 {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 128},
                 {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 256},
-
-                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 32},
-                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 64},
-                {"hidden_layers": 3, "hidden_dims": 128, "latent_dims": 128},
 
                 {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 64},
                 {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 128},
@@ -215,28 +213,27 @@ def get_stage_grids(best_config: dict) -> dict:
             "name": "stage4_network",
             "grid": {
                 "conv_kernel": [3, 5],
-                "activation_function": ["relu", "leaky"]
+                "activation_function": ["relu", "leaky"],
             },
         },
         5: {
             "name": "stage5_ssim",
             "grid": {
-                "ssim_loss_weight": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+                "ssim_loss_weight": [0.25, 0.5, 0.75],
             },
         },
         6: {
             "name": "stage6_optimizer",
             "grid": {
+                "learn_rate": fine_lr,
                 "weight_decay": [0.0, 1e-5, 1e-4],
-                "optim_beta1": [0.85, 0.9],
-                "optim_beta2": [0.99, 0.999],
             },
         },
         7: {
-            "name": "stage7_best_fine",
+            "name": "stage7_betas",
             "grid": {
-                "learn_rate": fine_lr,
-                "batch_size": fine_batch_size,
+                "optim_beta1": [0.85, 0.9],
+                "optim_beta2": [0.99, 0.999],
             },
         },
     }
@@ -507,6 +504,16 @@ class HyperparameterSearch(ModelTrainer):
             return
 
         try:
+            for loader_attr in ("train_loader", "valid_loader", "test_loader"):
+                loader = getattr(trainer, loader_attr, None)
+                iterator = getattr(loader, "_iterator", None) if loader is not None else None
+
+                if iterator is not None and hasattr(iterator, "_shutdown_workers"):
+                    try:
+                        iterator._shutdown_workers()
+                    except Exception:
+                        pass
+
             prepare_datasets = getattr(trainer, "prepare_datasets", None)
             if prepare_datasets is not None and hasattr(prepare_datasets, "close"):
                 try:
@@ -534,7 +541,10 @@ class HyperparameterSearch(ModelTrainer):
                 "history",
             ):
                 if hasattr(trainer, attr):
-                    delattr(trainer, attr)
+                    try:
+                        delattr(trainer, attr)
+                    except Exception:
+                        pass
 
         finally:
             SetupDevice.free_memory()

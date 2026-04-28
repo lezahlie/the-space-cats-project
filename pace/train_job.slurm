@@ -6,17 +6,17 @@
 #SBATCH --partition=ice-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=6   # 6 requested, script uses 5, 1 for the OS
+#SBATCH --cpus-per-task=4   # 4 requested, script uses 3, 1 for the OS
 #SBATCH --mem=64G           # always ask for more than you need
 #SBATCH --gres=gpu:1
-#SBATCH --time=16:00:00     # ice-gpu max; tune_model.py auto-recovers completed stages if resubmitted
+#SBATCH --time=12:00:00     # ice-gpu max; tune_model.py auto-recovers completed stages if resubmitted
 # #SBATCH --account=<account>
 
 set -euo pipefail
 
 PROJECT_DIR="$HOME/the-space-cats-project"
 DATASET="galaxiesml_medium"
-NUM_CORES=5
+NUM_CORES=4
 MASK_RATIO="${MASK_RATIO:-0.0}"
 PERSON="${PERSON:-user}"
 MASK_LABEL="${MASK_RATIO//./_}"
@@ -34,6 +34,8 @@ eval "$(conda shell.bash hook)"
 conda activate spacecats-cuda
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 nvidia-smi
+ulimit -n 4096 || true
+echo "open file limit: $(ulimit -n)"
 
 if [ ! -d "$PREP_DIR" ]; then
     echo "preprocessing $DATASET mask_ratio=$MASK_RATIO ..."
@@ -43,6 +45,8 @@ if [ ! -d "$PREP_DIR" ]; then
         --num-cores "$NUM_CORES" \
         --mask-ratio "$MASK_RATIO"
 fi
+ulimit -n 4096 || true
+echo "open file limit: $(ulimit -n)"
 
 
 if [ ! -f "$CONFIG_FILE" ]; then
