@@ -31,11 +31,15 @@ echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-?} ma
 
 module load anaconda3 2>/dev/null || module load miniconda3 2>/dev/null
 eval "$(conda shell.bash hook)"
+
+set +u
 conda activate spacecats-cuda
+set +u
+
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
-nvidia-smi
 ulimit -n 4096 || true
 echo "open file limit: $(ulimit -n)"
+
 
 if [ ! -d "$PREP_DIR" ]; then
     echo "preprocessing $DATASET mask_ratio=$MASK_RATIO ..."

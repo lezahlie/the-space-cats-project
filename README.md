@@ -355,9 +355,9 @@ python src/tune_model.py \
 --output-folder "experiments/tune_mae_small_<first_name>_<mask>" \
 --gpu-memory-fraction 0.9 \
 --num-cores 5 \
---tune-optimizer-steps 1000 \
+--tune-optimizer-steps 750 \
 --validate-every-steps 50 \
---tune-patience 5
+--tune-patience 3
 ```
 > - Do not pass `--debug` or it will NOT run the full tuning grid
 > - Replace `<your_name>` and `<mask_ratio>` in `[--output-folder]` in case we need to share our results
