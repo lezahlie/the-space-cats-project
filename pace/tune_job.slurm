@@ -33,7 +33,6 @@ set +u
 conda activate spacecats-cuda
 set -u
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
-nvidia-smi
 
 if [ ! -d "$PREP_DIR" ]; then
     echo "preprocessing $DATASET mask_ratio=$MASK_RATIO ..."
