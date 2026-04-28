@@ -30,7 +30,7 @@ eval "$(conda shell.bash hook)"
 
 set +u
 conda activate spacecats-cuda
-set +u
+set -u
 
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 nvidia-smi
