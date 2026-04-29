@@ -25,7 +25,7 @@ CONFIG_FILE="$PROJECT_DIR/configs/tune_default.json"
 PREP_DIR="$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL/$DATASET"
 OUTPUT_DIR="$PROJECT_DIR/experiments/tune_mae_small_${PERSON}_${MASK_RATIO}"
 mkdir -p "$PROJECT_DIR/logs"
-echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-?} mask_ratio=$MASK_RATIO person=$PERSON"
+echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-n} mask_ratio=$MASK_RATIO person=$PERSON"
 
 module load anaconda3 2>/dev/null || module load miniconda3 2>/dev/null
 eval "$(conda shell.bash hook)"
@@ -34,9 +34,45 @@ set +u
 conda activate spacecats-cuda
 set -u
 
+#######################################################
+echo "checking GPU availability"
+
+if [ -z "${CUDA_VISIBLE_DEVICES:-}" ] || [ "${CUDA_VISIBLE_DEVICES:-}" = "NoDevFiles" ]; then
+    echo "ERROR: no GPU assigned by SLURM"
+    echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
+    exit 1
+fi
+
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "ERROR: nvidia-smi not found"
+    exit 1
+fi
+
+if ! nvidia-smi -L >/dev/null 2>&1; then
+    echo "ERROR: no NVIDIA GPU visible to this job"
+    echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}"
+    exit 1
+fi
+
+python - <<'PY'
+import sys
+
+try:
+    import torch
+except Exception as e:
+    print(f"ERROR: could not import PyTorch: {e}", file=sys.stderr)
+    sys.exit(1)
+
+if not torch.cuda.is_available():
+    print("ERROR: PyTorch cannot see a CUDA GPU", file=sys.stderr)
+    sys.exit(1)
+
+print(f"PyTorch CUDA OK: {torch.cuda.get_device_name(0)}")
+PY
+
+#######################################################
+
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
-ulimit -n 4096 || true
-echo "open file limit: $(ulimit -n)"
 
 
 if [ ! -d "$PREP_DIR" ]; then
