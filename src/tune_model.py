@@ -133,6 +133,14 @@ def log_neighbors(best_val, sigs=(1.0, 3.0, 5.0), lower=None, upper=None) -> lis
 
     return sorted(set(values.tolist()))
 
+def _grid_has_param(param_grid, param_name):
+    if isinstance(param_grid, dict):
+        return param_name in param_grid
+
+    if isinstance(param_grid, list):
+        return any(param_name in combo for combo in param_grid)
+
+    return False
 
 def linear_neighbors(best_val, offsets=(-0.1, 0.0, 0.1), lower=None, upper=None) -> list:
     if lower is not None and upper is not None and lower > upper:
@@ -216,12 +224,12 @@ def get_stage_grids(best_config: dict) -> dict:
                 "activation_function": ["relu", "leaky"],
             },
         },
-        5: {
-            "name": "stage5_ssim",
-            "grid": {
-                "ssim_loss_weight": [0.25, 0.5, 0.75],
-            },
-        },
+        # 5: {  
+        #     "name": "stage5_ssim",    # deprecated
+        #     "grid": {
+        #         "ssim_loss_weight": [0.0, 0.25, 0.5, 0.75],
+        #     },
+        # },
         6: {
             "name": "stage6_optimizer",
             "grid": {
@@ -236,6 +244,12 @@ def get_stage_grids(best_config: dict) -> dict:
                 "optim_beta2": [0.99, 0.999],
             },
         },
+        8: {
+            "name": "stage8_ssim_fair",
+            "grid": {
+                "ssim_loss_weight": [0.0, 0.25, 0.5, 0.75],
+            },
+        }
     }
 
 # --------------------------------------------------
@@ -304,7 +318,7 @@ class HyperparameterSearch(ModelTrainer):
         save_to_json(path, self.best_stage_config)
         self.logger.info(f"[TUNING] Saved best config after {stage_name} -> {path}")
 
-    def update_best_configs(self, new_params: dict, stage_loss: float, stage_optimizer_step: int):
+    def update_best_configs(self, new_params: dict, stage_loss: float, stage_optimizer_step: int,     update_global_best: bool = True):
         """Carry best settings forward; also update global best if improved."""
         self.best_stage_config.update(new_params)
 
@@ -312,7 +326,7 @@ class HyperparameterSearch(ModelTrainer):
         self.best_overall_config = dict(self.base_config)
         self.best_overall_config.update(self.best_tuned_params)
 
-        if stage_loss < self.best_overall_loss:
+        if update_global_best and stage_loss < self.best_overall_loss:
             self.best_overall_loss = stage_loss
             self.best_overall_optimizer_step = int(stage_optimizer_step)
             self.logger.info(
@@ -585,6 +599,7 @@ class HyperparameterSearch(ModelTrainer):
         trainer: ModelTrainer,
         current_best_loss: float,
         current_best_optimizer_step: int,
+        selection_metric: str = "objective_loss",
     ):
 
         trainer.reset_trial_memory_peak()
@@ -648,7 +663,7 @@ class HyperparameterSearch(ModelTrainer):
                 optimizer_step=optimizer_steps_done
             )
 
-            valid_loss = float(valid_metrics["objective_loss"])
+            valid_loss = float(valid_metrics[selection_metric])
             trainer.scheduler_step(valid_loss)
             trainer.update_trial_memory_peak()
 
@@ -708,6 +723,8 @@ class HyperparameterSearch(ModelTrainer):
 
     def run_stage(self, stage_id: int, param_grid: dict, stage_name: str) -> tuple:
         combos = _grid_combinations(param_grid)
+        selection_metric = "ssim_loss" if _grid_has_param(param_grid, "ssim_loss_weight") else "objective_loss"
+
         completed, best_loss, best_params, best_trial_id, best_so_far_optimizer_step = self._existing_stage_state(stage_name)
 
         if all(self._get_hyper_params(params) in completed for params in combos):
@@ -724,7 +741,7 @@ class HyperparameterSearch(ModelTrainer):
         best_so_far_stage = "previous"
         best_so_far_trial = ""
 
-        if np.isfinite(best_loss) and (
+        if selection_metric == "objective_loss" and np.isfinite(best_loss) and (
             not np.isfinite(running_best_loss) or best_loss < running_best_loss
         ):
             running_best_loss = best_loss
@@ -764,11 +781,20 @@ class HyperparameterSearch(ModelTrainer):
 
                     trainer = self.make_trainer(cfg, label)
                     config_path = str(trainer.output_folder / "resolved_train_config.json")
+                    
+
+                    current_best_loss = running_best_loss
+                    current_best_optimizer_step = running_best_optimizer_step
+
+                    if selection_metric != "objective_loss":
+                        current_best_loss = float("inf")
+                        current_best_optimizer_step = -1
 
                     loss, best_optimizer_step, memory_stats, pruned = self._run_trial_with_pruning(
                         trainer=trainer,
-                        current_best_loss=running_best_loss,
-                        current_best_optimizer_step=running_best_optimizer_step,
+                        current_best_loss=current_best_loss,
+                        current_best_optimizer_step=current_best_optimizer_step,
+                        selection_metric=selection_metric
                     )
 
                     status = "pruned" if pruned else "complete"
@@ -795,7 +821,7 @@ class HyperparameterSearch(ModelTrainer):
                 best_trial_id = trial_id
                 best_so_far_optimizer_step = best_optimizer_step
 
-            if np.isfinite(loss) and loss < running_best_loss:
+            if selection_metric == "objective_loss" and np.isfinite(loss) and loss < running_best_loss:
                 running_best_loss = loss
                 running_best_optimizer_step = best_optimizer_step
                 best_so_far_stage = stage_name
@@ -889,7 +915,9 @@ class HyperparameterSearch(ModelTrainer):
                 f"best_params={best_params}"
             )
 
-            self.update_best_configs(best_params, best_loss, best_optimizer_step)
+            selection_metric = "ssim_loss" if _grid_has_param(param_grid, "ssim_loss_weight") else "objective_loss"
+
+            self.update_best_configs(best_params, best_loss, best_optimizer_step, update_global_best=selection_metric == "objective_loss")
             self.save_best_so_far(stage_name)
             self.save_resume_state(stage_id, stage_name)
             self.logger.info(f"[Overall] best_trial_id={best_trial_id}, best_loss={self.best_overall_loss:.8f}")

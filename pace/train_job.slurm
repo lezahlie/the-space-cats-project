@@ -76,8 +76,6 @@ PY
 #######################################################
 
 export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
-ulimit -n 4096 || true
-echo "open file limit: $(ulimit -n)"
 
 
 if [ ! -d "$PREP_DIR" ]; then
@@ -87,15 +85,6 @@ if [ ! -d "$PREP_DIR" ]; then
         --output-folder "$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL" \
         --num-cores "$NUM_CORES" \
         --mask-ratio "$MASK_RATIO"
-fi
-ulimit -n 4096 || true
-echo "open file limit: $(ulimit -n)"
-
-
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: missing training config: $CONFIG_FILE"
-    echo "Run: bash pace/submit_tuning.sh $PERSON"
-    exit 1
 fi
 
 echo "starting tuning | person=$PERSON mask_ratio=$MASK_RATIO output=$OUTPUT_DIR"
