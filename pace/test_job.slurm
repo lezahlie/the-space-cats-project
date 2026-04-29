@@ -14,7 +14,7 @@
 #SBATCH --error=logs/test_%j.err
 # #SBATCH --account=<account>
 
-set -euo pipefail
+set -eo pipefail
 
 PROJECT_DIR="$HOME/the-space-cats-project"
 DATASET="galaxiesml_tiny"

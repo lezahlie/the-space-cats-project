@@ -7,7 +7,7 @@
 # Mask ratio assignments:
 #   leslie -> 0.0 | charlie -> 0.25 | chris -> 0.5 | wen -> 0.75
 
-set -euo pipefail
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/logs"

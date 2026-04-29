@@ -12,7 +12,7 @@
 #SBATCH --time=16:00:00     # ice-gpu max; tune_model.py auto-recovers completed stages if resubmitted
 # #SBATCH --account=<account>
 
-set -euo pipefail
+set -eo pipefail
 
 PROJECT_DIR="$HOME/the-space-cats-project"
 DATASET="galaxiesml_medium"

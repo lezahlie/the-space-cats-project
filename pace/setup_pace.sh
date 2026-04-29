@@ -2,7 +2,7 @@
 # Run once on the PACE ICE login node to create the conda environment.
 # Usage: bash pace/setup_pace.sh
 
-set -euo pipefail
+set -eo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 module load anaconda3 2>/dev/null || module load miniconda3 2>/dev/null || {
