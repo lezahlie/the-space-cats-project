@@ -21,10 +21,10 @@ MASK_RATIO="${MASK_RATIO:-0.0}"
 PERSON="${PERSON:-user}"
 MASK_LABEL="${MASK_RATIO//./_}"
 
-CONFIG_FILE="$PROJECT_DIR/configs/train_best_${PERSON}_mask_${MASK_LABEL}.json"
+CONFIG_FILE="$PROJECT_DIR/configs/best_config_${PERSON}_${MASK_RATIO}.json"
 PREP_BASE_DIR="$PROJECT_DIR/data/preprocessed/mask_$MASK_LABEL"
 PREP_DIR="$PREP_BASE_DIR/$DATASET"
-OUTPUT_DIR="$PROJECT_DIR/experiments/train_mae_medium_${PERSON}_mask_${MASK_LABEL}"
+OUTPUT_DIR="$PROJECT_DIR/experiments/train_mae_medium_${PERSON}_mask_${MASK_RATIO}"
 
 mkdir -p "$PROJECT_DIR/logs"
 echo "job=$SLURM_JOB_ID node=$SLURMD_NODENAME gpus=${CUDA_VISIBLE_DEVICES:-"NONE"} mask_ratio=$MASK_RATIO person=$PERSON"
@@ -106,9 +106,9 @@ python "$PROJECT_DIR/src/train_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
-    --validate-every-steps 50 \
+    --validate-every-steps 100 \
     --max-wallclock-hours 16 \
-    --checkpoint-buffer-minutes 90 \
+    --checkpoint-buffer-minutes 120 \
     --disable-earlystop
 
 echo "done | $OUTPUT_DIR"

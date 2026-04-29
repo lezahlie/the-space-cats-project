@@ -17,31 +17,17 @@ mkdir -p "$LOG_DIR"
 submit() {
     local person="$1"
     local mask_ratio="$2"
-
     [[ "$FILTER" != "all" && "$FILTER" != "$person" ]] && return
 
     local project_root="/storage/ice-shared/cs7643/shared-group-project-data/the-space-cats/the-space-cats-project"
-    local tune_config="$project_root/experiments/tune_mae_${person}_${mask_ratio}/best_overall_config.json"
+    local tune_config="$project_root/experiments/tune_mae_small_${person}_${mask_ratio}/best_overall_config.json"
     local train_config="$project_root/configs/best_config_${person}_${mask_ratio}.json"
 
-    if [ -f "$train_config" ]; then
-        echo "using existing training config:"
-        echo "  train_config: $train_config"
-
-    elif [ -f "$tune_config" ]; then
-        cp "$tune_config" "$train_config"
-        echo "copied training config:"
-        echo "  from: $tune_config"
-        echo "  to:   $train_config"
-
-    else
+    if [ ! -f "$train_config" ]; then
         echo "skip missing config | person=$person mask_ratio=$mask_ratio"
-        echo "  missing train_config: $train_config"
-        echo "  missing tune_config:  $tune_config"
-        echo "  either run/resubmit tuning first: bash pace/submit_tuning.sh $person"
-        echo "  or manually copy an existing tuned config to:"
-        echo "    $train_config"
-        return
+        echo "  or manually copy tuned config:"
+        echo "  from: $tune_config"
+        echo "   to: $train_config"
     fi
 
     local name="train_mae_${person}_${mask_ratio}"
