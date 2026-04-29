@@ -898,20 +898,12 @@ class HyperparameterSearch(ModelTrainer):
         save_to_json(best_tuned_params_path, self.best_tuned_params)
 
         self.best_overall_config.update({
-            "num_epochs": 500,
-            "lr_scheduler": "plateau",
-            "lr_scheduler_patience": 4,
-            "lr_scheduler_factor": 0.2,
-            "lr_scheduler_min_lr": 1e-6,
-
-            "enable_earlystop": True,
-            "earlystop_patience": 12,
-            "earlystop_min_delta": 0.0,
-
+            "num_epochs": 1000,
+            "enable_earlystop": False,
             "log_epoch_frequency": 1,
             "log_batch_frequency": 0,
             "plot_last_batch_frequency": 500,
-            "plot_last_batch_limit": 10
+            "plot_last_batch_limit": 5
         })
 
         best_overall_path = self.output_folder / "best_overall_config.json"

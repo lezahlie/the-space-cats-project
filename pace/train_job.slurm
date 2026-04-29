@@ -106,8 +106,9 @@ python "$PROJECT_DIR/src/train_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
-    --validate-every-steps 100 \
+    --validate-every-steps 50 \
     --max-wallclock-hours 16 \
-    --checkpoint-buffer-minutes 120
+    --checkpoint-buffer-minutes 90 \
+    --disable-earlystop
 
 echo "done | $OUTPUT_DIR"

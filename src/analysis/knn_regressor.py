@@ -6,6 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
+import pickle
 
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -37,11 +38,19 @@ def process_args():
     )
     parser.add_argument('--debug', '-d', dest='debug', action='store_true',
                 help="Enables debug option and verbose printing | default: Off")
-    parser.add_argument('--params-file', dest="params_file", type=str, default=None,
+    
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument('--params-file', dest="params_file", type=str, default=None,
                 help=(
                     "Path to a pre-saved knn_best_params.yaml.\n"
                     "If not present, tune hyperparameters and generate yaml | default: None"
                 ))
+    model_group.add_argument('--model-file', dest="model_file", type=str, default=None,
+        help=(
+            "Path to pickle file containing a trained KNN model.\n"
+            "If provided, skips tuning/training and evaluates the saved model only | default: None"
+        ))
+    
     parser.add_argument('--input-folder', dest="input_folder", type=str, required=True,
                 help=(
                     "Directory containing HDF5 model output files.\n"
@@ -56,6 +65,8 @@ def process_args():
 
     if args.params_file is not None and not os.path.isfile(args.params_file):
         raise FileNotFoundError(f"[--params-file] '{args.params_file}' does not exist")
+    if args.model_file is not None and not os.path.isfile(args.model_file):
+        raise FileNotFoundError(f"[--model-file] '{args.model_file}' does not exist")
 
     if not os.path.isdir(args.input_folder):
         raise FileNotFoundError(f"'{args.input_folder}' does not exist")
@@ -66,6 +77,20 @@ def process_args():
 
     return args
 
+def save_model(model, model_path):
+    try:
+        with model_path.open("wb") as f:
+            pickle.dump(model, f, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception as e:
+        raise e
+    
+def load_model(model_path):
+    try:
+        model_path = Path(model_path)
+        with model_path.open("rb") as f:
+            return pickle.load(f)
+    except Exception as e:
+        raise e
 
 # ==================================================
 # CONTRIBUTION START: load_split, tune_knn, evaluate_knn, plot_* functions, main
@@ -220,10 +245,11 @@ def plot_model_comparison(comparison_results, save_path):
     plt.close(fig)
 
 
-def run_model(input_folder, output_folder, fixed_params=None):
+def run_model(input_folder, output_folder, fixed_params=None, model_file=None):
     """Evaluate KNN for a single model's latent vectors. Returns test metrics.
 
     If fixed_params is provided, skips tuning and uses them directly.
+    If model_file is provided, loads the saved model and skips tuning/training.
     """
     logger = get_logger()
     output_folder = Path(output_folder)
@@ -236,30 +262,42 @@ def run_model(input_folder, output_folder, fixed_params=None):
         splits[split] = (X, y)
         logger.info(f"[{split:>5}] Loaded X={X.shape}, y={y.shape} from {fpath.name}")
 
-    X_train, y_train = splits["train"]
-    X_valid, y_valid = splits["valid"]
 
-    if fixed_params is None:
-        logger.info("Tuning KNN hyperparameters...")
-        best_params, tune_results = tune_knn(X_train, y_train, X_valid, y_valid)
-        save_to_json(output_folder / "knn_tune_results.json", tune_results)
-        plot_tuning_results(tune_results, output_folder / "knn_tuning.png")
+    if model_file is None:
+        X_train, y_train = splits["train"]
+        X_valid, y_valid = splits["valid"]
+
+        if fixed_params is None:
+            logger.info("Tuning KNN hyperparameters...")
+            best_params, tune_results = tune_knn(X_train, y_train, X_valid, y_valid)
+            save_to_json(output_folder / "knn_tune_results.json", tune_results)
+            plot_tuning_results(tune_results, output_folder / "knn_tuning.png")
+        else:
+            best_params = fixed_params
+            logger.info(f"Using fixed params from baseline: {best_params}")
+            
+        save_to_yaml(output_folder / "knn_best_params.yaml", best_params)
+
+        # Fit final model on train+valid combined with best params, evaluate on test
+        X_trainval = np.concatenate([X_train, X_valid], axis=0)
+        y_trainval = np.concatenate([y_train, y_valid], axis=0)
+        final_model = KNeighborsRegressor(**best_params)
+        final_model.fit(X_trainval, y_trainval)
+        logger.info(f"Fitted final KNN on train+valid with {best_params}")
+
+        if fixed_params is None:
+            logger.info("Saving trained KNN model after tuning...")
+            model_path = output_folder / "knn_regressor.pkl"
+            save_model(final_model, model_path)
+            logger.info(f"Saved trained KNN model to: {model_path}")
+    
+        # Also fit a train-only model for reporting train and valid metrics separately
+        train_model = KNeighborsRegressor(**best_params)
+        train_model.fit(X_train, y_train)
     else:
-        best_params = fixed_params
-        logger.info(f"Using fixed params from baseline: {best_params}")
-
-    save_to_yaml(output_folder / "knn_best_params.yaml", best_params)
-
-    # Fit final model on train+valid combined with best params, evaluate on test
-    X_trainval = np.concatenate([X_train, X_valid], axis=0)
-    y_trainval = np.concatenate([y_train, y_valid], axis=0)
-    final_model = KNeighborsRegressor(**best_params)
-    final_model.fit(X_trainval, y_trainval)
-    logger.info(f"Fitted final KNN on train+valid with {best_params}")
-
-    # Also fit a train-only model for reporting train and valid metrics separately
-    train_model = KNeighborsRegressor(**best_params)
-    train_model.fit(X_train, y_train)
+        logger.info(f"Loading saved KNN model from: {model_file}")
+        final_model = load_model(model_file)
+        train_model = final_model
 
     y_true_dict = {}
     y_pred_dict = {}
@@ -298,13 +336,14 @@ def main(args):
     output_folder = Path(args.output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
+    
     if args.params_file is not None:
         fixed_params = load_from_yaml(args.params_file)
         logger.info(f"Loaded fixed params from {args.params_file}: {fixed_params}")
     else:
         fixed_params = None
 
-    run_model(args.input_folder, output_folder, fixed_params=fixed_params)
+    run_model(args.input_folder, output_folder, fixed_params=fixed_params, model_file=args.model_file)
 
 
 # ==================================================

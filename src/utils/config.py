@@ -33,7 +33,7 @@ DEFAULT_CONFIG = {
     "hidden_factor": 2.0,
     "ascending_channels": True,
 
-    "enable_earlystop": True,
+    "enable_earlystop": False,
     "earlystop_patience": 12,
     "earlystop_min_delta": 0.0,
 

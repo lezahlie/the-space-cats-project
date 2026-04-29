@@ -39,7 +39,9 @@ def process_args():
              help="Maximum optimizer steps for training | default: num_epochs * train_batches")
     parser.add_argument("--validate-every-steps", dest="validate_every_steps", type=int, default=None, 
                 help="Validate every N optimizer steps | default: one epoch worth of optimizer steps")
-
+    parser.add_argument('--disable-earlystop', dest='disable_earlystop', action='store_true', 
+                help="Force 'enable_earlystop' setting to be false regardless of config settings | default: Off")
+    
     args = parser.parse_args()
 
 
@@ -1178,11 +1180,16 @@ def main(args):
     logger.info(f"Using device = {device}")
 
     train_config = read_from_json(args.config_file)
-    train_config.update({
+    config_update = {
         "debug": args.debug,
         "num_workers": args.num_cores,
         "random_seed": args.random_seed,
-    })
+    }
+
+    if args.disable_earlystop:
+        config_update["enable_earlystop"] = False
+
+    train_config.update(config_update)
 
     trainer = ModelTrainer(train_config, args.input_folder, args.output_folder, device=device)
     results = trainer.train_model(
