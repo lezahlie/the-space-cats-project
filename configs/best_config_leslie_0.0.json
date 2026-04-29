@@ -1,5 +1,5 @@
 {
-    "num_epochs": 500,
+    "num_epochs": 1000,
     "ssim_loss_weight": 0.25,
     "batch_size": 64,
     "learn_rate": 0.0005,
@@ -26,8 +26,8 @@
     "earlystop_min_delta": 0.0,
     "log_epoch_frequency": 1,
     "log_batch_frequency": 0,
-    "plot_last_batch_frequency": 200,
-    "plot_last_batch_limit": 10,
+    "plot_last_batch_frequency": 500,
+    "plot_last_batch_limit": 5,
     "debug": false,
     "num_workers": 5,
     "random_seed": 42,
