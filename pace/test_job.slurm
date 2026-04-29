@@ -16,7 +16,7 @@
 
 set -eo pipefail
 
-PROJECT_DIR="$HOME/the-space-cats-project"
+PROJECT_DIR="/storage/ice-shared/cs7643/shared-group-project-data/the-space-cats/the-space-cats-project"
 DATASET="galaxiesml_tiny"
 NUM_CORES=5
 
