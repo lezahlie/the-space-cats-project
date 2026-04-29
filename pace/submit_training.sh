@@ -32,11 +32,13 @@ submit() {
         return
     fi
 
-    cp "$tune_config" "$train_config"
-
-    echo "copied training config:"
-    echo "  from: $tune_config"
-    echo "  to:   $train_config"
+    if [ ! -f "$train_config" ]; then
+        cp "$tune_config" "$train_config"
+        echo "copied training config:"
+        echo "  from: $tune_config"
+        echo "  to:   $train_config"
+        return
+    fi
 
     local name="train_mae_${person}_${mask_ratio}"
     local job_id
