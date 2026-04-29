@@ -21,9 +21,9 @@ submit() {
     [[ "$FILTER" != "all" && "$FILTER" != "$person" ]] && return
 
     local mask_label="${mask_ratio//./_}"
-
-    local tune_config="$PROJECT_ROOT/experiments/tune_mae_${person}_${mask_ratio}/best_overall_config.json"
-    local train_config="$PROJECT_ROOT/configs/best_config_${person}_${mask_label}.json"
+    local project_root="/storage/ice-shared/cs7643/shared-group-project-data/the-space-cats/the-space-cats-project"
+    local tune_config="$project_root/experiments/tune_mae_${person}_${mask_ratio}/best_overall_config.json"
+    local train_config="$project_root/configs/best_config_${person}_${mask_label}.json"
 
     if [ -f "$train_config" ]; then
         echo "using existing training config:"
