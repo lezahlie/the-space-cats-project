@@ -25,18 +25,23 @@ submit() {
     local tune_config="$PROJECT_ROOT/experiments/tune_mae_${person}_${mask_ratio}/best_overall_config.json"
     local train_config="$PROJECT_ROOT/configs/train_best_${person}_mask_${mask_label}.json"
 
-    if [ ! -f "$tune_config" ]; then
-        echo "skip missing best tuning config | person=$person mask_ratio=$mask_ratio"
-        echo "  missing: $tune_config"
-        echo "  run/resubmit tuning first: bash pace/submit_tuning.sh $person"
-        return
-    fi
+    if [ -f "$train_config" ]; then
+        echo "using existing training config:"
+        echo "  train_config: $train_config"
 
-    if [ ! -f "$train_config" ]; then
+    elif [ -f "$tune_config" ]; then
         cp "$tune_config" "$train_config"
         echo "copied training config:"
         echo "  from: $tune_config"
         echo "  to:   $train_config"
+
+    else
+        echo "skip missing config | person=$person mask_ratio=$mask_ratio"
+        echo "  missing train_config: $train_config"
+        echo "  missing tune_config:  $tune_config"
+        echo "  either run/resubmit tuning first: bash pace/submit_tuning.sh $person"
+        echo "  or manually copy an existing tuned config to:"
+        echo "    $train_config"
         return
     fi
 
