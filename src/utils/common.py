@@ -241,8 +241,10 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
         hdf5_path,
         input_key="image",
         target_key=None,
+        auxiliary_key=None,
         transform=None,
         target_transform=None,
+        auxiliary_transform=None,
         max_samples=None,
     ):
         
@@ -258,8 +260,10 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
         self.hdf5_path = str(hdf5_path)
         self.input_key = input_key
         self.target_key = target_key
+        self.auxiliary_key = auxiliary_key
         self.transform = transform
         self.target_transform = target_transform
+        self.auxiliary_transform = auxiliary_transform
         self.max_samples = max_samples
         self._file = None
 
@@ -281,6 +285,12 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
                         raise KeyError(f"Missing dataset key: {self.target_key}")
                     if f[self.target_key].shape[0] != self.length:
                         raise ValueError(f"Length mismatch for target key: {self.target_key}")
+
+            if self.auxiliary_key is not None:
+                if self.auxiliary_key not in f:
+                    raise KeyError(f"Missing dataset key: {self.auxiliary_key}")
+                if f[self.auxiliary_key].shape[0] != self.length:
+                    raise ValueError(f"Length mismatch for auxiliary key: {self.auxiliary_key}")
 
             if self.max_samples is not None:
                 self.length = min(self.length, self.max_samples)
@@ -334,7 +344,15 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
             if self.target_transform is not None:
                 y = self.target_transform(y)
 
-        return x, y
+        if self.auxiliary_key is None:
+            return x, y
+
+        z = self._to_target_tensor(f[self.auxiliary_key][idx])
+        if self.auxiliary_transform is not None:
+            z = self.auxiliary_transform(z)
+
+        return x, y, z
+
 
 class AttrDict(dict):
     def __getattr__(self, key):
