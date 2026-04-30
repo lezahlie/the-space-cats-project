@@ -3,7 +3,7 @@ from src.preprocess_data import Normalize
 
 def main():
 
-    dataset_size="tiny"
+    dataset_size="medium"
 
     # Update these for whomever's results
     first_name = "leslie"
