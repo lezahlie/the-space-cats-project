@@ -399,7 +399,7 @@ python src/tune_model.py \
 1. Predict redshift with reconstructions (Chris)
 
 ```python
-from src.utils import GalaxyMLDataset
+from src.utils.common import GalaxyMLDataset
 
 train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.hdf5"
 valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.hdf5"
@@ -414,7 +414,7 @@ test_data = GalaxiesMLDataset(test_path, input_key = "y_recon_image", target_key
 
 ```python
 
-from src.utils import GalaxyMLDataset
+from src.utils.common import GalaxyMLDataset
 
 train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.pth"
 valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.pth"
