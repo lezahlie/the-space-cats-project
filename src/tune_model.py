@@ -210,20 +210,20 @@ def get_stage_grids(best_config: dict) -> dict:
 
                 {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 64},
                 {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 128},
-                {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 256},
+                # {"hidden_layers": 2, "hidden_dims": 256, "latent_dims": 256},
 
                 {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 64},
                 {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 128},
-                {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 256},
+                # {"hidden_layers": 3, "hidden_dims": 256, "latent_dims": 256},
             ],
         },
-        4: {
-            "name": "stage4_network",
-            "grid": {
-                "conv_kernel": [3, 5],
-                "activation_function": ["relu", "leaky"],
-            },
-        },
+        # 4: {
+        #     "name": "stage4_network",
+        #     # "grid": {
+        #     #     # "conv_kernel": [3, 5],
+        #         "activation_function": ["relu", "leaky"],
+        #     },
+        # },
         # 5: {  
         #     "name": "stage5_ssim",    # deprecated
         #     "grid": {

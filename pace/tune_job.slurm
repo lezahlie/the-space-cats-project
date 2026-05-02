@@ -92,7 +92,7 @@ python "$PROJECT_DIR/src/tune_model.py" \
     --output-folder "$OUTPUT_DIR" \
     --gpu-memory-fraction 0.9 \
     --num-cores "$NUM_CORES" \
-    --tune-optimizer-steps 750 \
+    --tune-optimizer-steps 500 \
     --validate-every-steps 50 \
     --tune-patience 3
 
