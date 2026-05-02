@@ -261,6 +261,44 @@ def collect_metric_rows(datasets):
 
     return pd.DataFrame(rows)
 
+def dedupe_metric_rows(df, expected_n_per_mask=2500):
+    df = df.copy()
+
+    key_cols = ["run", "mask_ratio", "original_id"]
+
+    before_counts = df.groupby(["run", "mask_ratio"]).size()
+    unique_counts = df.groupby(["run", "mask_ratio"])["original_id"].nunique()
+
+    duplicate_report = (
+        pd.concat(
+            {
+                "rows_before": before_counts,
+                "unique_original_ids": unique_counts,
+            },
+            axis=1,
+        )
+        .reset_index()
+    )
+    duplicate_report["duplicates_dropped"] = (
+        duplicate_report["rows_before"] - duplicate_report["unique_original_ids"]
+    )
+
+    print("\nDuplicate export-row report:")
+    print(duplicate_report)
+
+    df = df.drop_duplicates(subset=key_cols, keep="first").copy()
+
+    after_counts = df.groupby(["run", "mask_ratio"]).size()
+    print("\nRows after deduplication:")
+    print(after_counts)
+
+    bad_counts = after_counts[after_counts != expected_n_per_mask]
+    if len(bad_counts) > 0:
+        print("\nWARNING: some runs do not have expected unique sample count:")
+        print(bad_counts)
+
+    return df
+
 
 def add_mask_ratio_column(df):
     df = df.copy()
@@ -712,6 +750,7 @@ def main():
         return
 
     df = collect_metric_rows(datasets)
+    df = dedupe_metric_rows(df, expected_n_per_mask=2500)
 
     csv_path = analysis_dir / "reconstruction_metrics.csv"
 
