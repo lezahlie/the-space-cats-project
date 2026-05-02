@@ -1,5 +1,5 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, Path, pt, h5py, np, random, json, GalaxiesMLDataset, AttrDict
+from src.utils.common import argparse, os, Path, pt, h5py, np, random, json, AttrDict
 
 
 def process_args():
@@ -382,7 +382,13 @@ class Normalize:
         self.specz_min = None
         self.specz_max = None
 
-    def fit(self, train_data):
+    def fit(
+        self,
+        hdf5_path,
+        image_key="image",
+        specz_key="specz_redshift",
+        chunk_size=512,
+    ):
         """fit the training split by deriving the global min and max 
         from the training split ONLY to avoid data leakage.
 
@@ -390,20 +396,25 @@ class Normalize:
             train_data: _description_
         """
         logger = get_logger()
-        hdf5_path = getattr(train_data, "hdf5_path", None)
+
         if hdf5_path is None:
             raise ValueError("train_data must have an attribute 'hdf5_path' (GalaxiesMLDataset)")
-
-        image_key = getattr(train_data, "input_key", None)
-        n_samples = len(train_data)
-        chunk_size = 512
 
         global_min = np.inf
         global_max = -np.inf
 
         with h5py.File(hdf5_path, 'r') as f:
+
+            if image_key not in f:
+                raise KeyError(f"Missing image key '{image_key}' in HDF5 file: {hdf5_path}")
+            
+            if specz_key not in f:
+                raise KeyError(f"Missing image key '{specz_key}' in HDF5 file: {hdf5_path}")
+        
             images = f[image_key]
+            n_samples = len(images)
             logger.info(f"Fitting on {n_samples} from {hdf5_path} with chunk size {chunk_size}")
+
             for i in range(0, n_samples, chunk_size):
                 end = min(i + chunk_size, n_samples)
                 chunk = images[i:end].astype(np.float32)
@@ -414,8 +425,10 @@ class Normalize:
             self.original_max = global_max
             logger.info(f"Image pixel range: min={global_min:.6f}, max={global_max:.6f}")
 
-            if 'specz_redshift' in f:
-                specz = f['specz_redshift'][:n_samples].astype(np.float32)
+
+            
+            if specz_key in f:
+                specz = f[specz_key][:n_samples].astype(np.float32)
                 valid = specz[np.isfinite(specz)]
                 if len(valid) > 0:
                     self.specz_min = float(valid.min())
@@ -671,9 +684,13 @@ def main(args):
 
     # Fit normalization on raw training data (no transform applied yet)
     transform = Normalize()
-    train_raw = GalaxiesMLDataset(train_path)
+
     logger.info("Fitting normalization transform on training data...")
-    transform.fit(train_raw)
+    transform.fit(
+        train_path,
+        image_key="image",
+        specz_key="specz_redshift"
+    )
 
     # Build datasets with normalization applied
     train_dataset = PrepareDataset(train_path, transform=transform, 

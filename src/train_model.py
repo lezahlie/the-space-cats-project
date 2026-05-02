@@ -1,8 +1,8 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, copy, Path, pt, time, np, make_tar_gz, HDF5StackWriter, read_from_json, save_to_json, validate_tensor
+from src.utils.common import argparse, os, copy, Path, pt, time, np, HDF5StackWriter, read_from_json, save_to_json, validate_tensor
 from src.utils.config import validate_config, merge_config
 from src.utils.device import SetupDevice
-from src.utils.viz import plot_image_samples, plot_learning_curves
+from src.utils.viz import plot_learning_curves, plot_image_samples
 from src.preprocess_data import Normalize, PrepareDataset, PrepareDatasets
 from src.models.MaskedAutoencoder import MaskedAutoencoder
 from src.utils.losses import masked_reconstruction_loss
@@ -1227,13 +1227,13 @@ if __name__ == "__main__":
 # make sure it works so far:
 """
 python src/train_model.py \
---config-file configs/overfit_config.json \
+--config-file configs/train_overfit.json \
 --input-folder data/preprocessed/galaxiesml_tiny \
---output-folder experiments/train_mae_tiny_debug_overfit \
+--output-folder experiments/train_mae_tiny_debug \
 --gpu-memory-fraction 0.9 \
---num-cores 5 \
---max-optimizer-steps 500 \
---validate-every-steps 50 \
+--num-cores 2 \
+--max-optimizer-steps 5 \
+--validate-every-steps 2 \
 --max-wallclock-hours 1.25 \
 --checkpoint-buffer-minutes 25 \
 --debug

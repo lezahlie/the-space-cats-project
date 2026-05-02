@@ -35,6 +35,6 @@
 
     "log_epoch_frequency": 1,
     "log_batch_frequency": 0,
-    "plot_last_batch_frequency": 50,
+    "plot_last_batch_frequency": 1,
     "plot_last_batch_limit": 5
 }

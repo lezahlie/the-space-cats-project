@@ -1,7 +1,7 @@
 from src.utils.logger import get_logger
 from src.utils.common import  argparse,  h5py, np, pd, Path, save_to_json, make_tar_gz
 import matplotlib.pyplot as plt
-
+import seaborn as sns
 
 def process_args():
     parser = argparse.ArgumentParser(description="Create reduced GalaxiesML HDF5 datasets")
@@ -36,6 +36,7 @@ def process_args():
 def read_redshift(hdf5_path):
     with h5py.File(hdf5_path, "r") as f:
         return f["specz_redshift"][:]
+
 
 
 def compute_redshift_iqr_stats(
@@ -110,7 +111,7 @@ def compare_redshift_hist(
         full_y,
         dataset_name=dataset_name,
         split_name=split_name,
-        source_name="full",
+        source_name="Source Full",
         outlier_factor=outlier_factor,
         extreme_factor=extreme_factor,
     )
@@ -160,7 +161,7 @@ def compare_redshift_hist(
     fig, ax = plt.subplots(figsize=(12, 8), facecolor="white")
     ax.set_facecolor("white")
 
-    ax.hist(full_y, bins=num_bins, density=True, alpha=0.5, label="Full", color="red")
+    ax.hist(full_y, bins=num_bins, density=True, alpha=0.5, label="Source Full", color="red")
     ax.hist(sampled_y, bins=num_bins, density=True, alpha=0.5, label="Sampled", color="blue")
     ax.grid(True)
     ax.set_xlabel("Specz_Redshift", fontsize=18)
@@ -194,6 +195,187 @@ def compare_redshift_hist(
     plt.close(fig)
     return stats_df
 
+
+def compare_redshift_combined(
+    input_folder,
+    output_folder,
+    out_path,
+    tuning_internal_keyword="small",
+    final_internal_keyword="medium",
+    num_bins=50,
+):
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+
+    split_specs = [
+        (
+            "Train Subset",
+            input_folder / "5x64x64_training_with_morphology.hdf5",
+            output_folder / f"galaxiesml_{tuning_internal_keyword}" / f"5x64x64_training_reduced_{tuning_internal_keyword}.hdf5",
+            output_folder / f"galaxiesml_{final_internal_keyword}" / f"5x64x64_training_reduced_{final_internal_keyword}.hdf5",
+        ),
+        (
+            "Validation Subset",
+            input_folder / "5x64x64_validation_with_morphology.hdf5",
+            output_folder / f"galaxiesml_{tuning_internal_keyword}" / f"5x64x64_validation_reduced_{tuning_internal_keyword}.hdf5",
+            output_folder / f"galaxiesml_{final_internal_keyword}" / f"5x64x64_validation_reduced_{final_internal_keyword}.hdf5",
+        ),
+        (
+            "Testing Subset",
+            input_folder / "5x64x64_testing_with_morphology.hdf5",
+            output_folder / f"galaxiesml_{tuning_internal_keyword}" / f"5x64x64_testing_reduced_{tuning_internal_keyword}.hdf5",
+            output_folder / f"galaxiesml_{final_internal_keyword}" / f"5x64x64_testing_reduced_{final_internal_keyword}.hdf5",
+        ),
+    ]
+
+    dataset_order = ["Source Full", "Tuning Reduced", "Final Reduced"]
+    split_order = ["Train Subset", "Validation Subset", "Testing Subset"]
+
+    rows = []
+
+    for split_label, full_path, tuning_path, final_path in split_specs:
+        for dataset_label, path in [
+            ("Source Full", full_path),
+            ("Tuning Reduced", tuning_path),
+            ("Final Reduced", final_path),
+        ]:
+            if not path.is_file():
+                raise FileNotFoundError(f"Missing redshift file: {path}")
+
+            y = read_redshift(path)
+            y = pd.Series(np.asarray(y), dtype="float64")
+            y = y.replace([np.inf, -np.inf], np.nan).dropna()
+
+            rows.append(
+                pd.DataFrame(
+                    {
+                        "split": split_label,
+                        "dataset": dataset_label,
+                        "specz_redshift": y.to_numpy(),
+                    }
+                )
+            )
+
+        plot_df = pd.concat(rows, ignore_index=True)
+
+        sns.set_theme(
+        context="paper",
+        style="whitegrid",
+        rc={
+            "font.size": 12,
+            "axes.titlesize": 20,
+            "axes.labelsize": 20,
+            "xtick.labelsize": 18,
+            "ytick.labelsize": 18,
+            "legend.fontsize": 18,
+            "axes.facecolor": "white",
+            "figure.facecolor": "white",
+            "grid.alpha": 0.8,
+        },
+    )
+
+    # ColorBrewer / Seaborn Set1 colors
+    # green, purple, blue
+    set1 = sns.color_palette("Set1", 3)
+
+    palette = {
+        "Source Full": set1[2],             # green
+        "Tuning Reduced": set1[0],   # red
+        "Final Reduced": set1[1],    # blue
+    }
+
+    line_styles = {
+        "Source Full": "-",
+        "Tuning Reduced": "-",
+        "Final Reduced": "--",
+    }
+
+    line_widths = {
+        "Source Full": 1.4,
+        "Tuning Reduced": 2.8,
+        "Final Reduced": 2.8,
+    }
+
+    zorders = {
+        "Source Full": 1,
+        "Tuning Reduced": 4,
+        "Final Reduced": 5,
+    }
+
+    x_min = float(plot_df["specz_redshift"].min())
+    x_max = float(plot_df["specz_redshift"].max())
+
+    # Fewer bins = cleaner outlines for overlapping distributions
+    bins = np.linspace(x_min, x_max, min(num_bins, 40) + 1)
+
+    fig, axes = plt.subplots(
+        len(split_order),
+        1,
+        figsize=(10, 12),
+        sharex=True,
+        sharey=True,
+    )
+
+    for ax, split_name in zip(axes, split_order):
+        split_df = plot_df[plot_df["split"] == split_name]
+
+        for dataset_name in dataset_order:
+            group = split_df.loc[
+                split_df["dataset"] == dataset_name,
+                "specz_redshift",
+            ].dropna()
+
+            if group.empty:
+                continue
+
+            if dataset_name == "Source Full":
+                ax.hist(
+                    group,
+                    bins=bins,
+                    density=True,
+                    histtype="stepfilled",
+                    alpha=0.4,
+                    color=palette[dataset_name],
+                    label=f"{dataset_name} (N={len(group):,})",
+                    zorder=zorders[dataset_name],
+                )
+
+            ax.hist(
+                group,
+                bins=bins,
+                density=True,
+                histtype="step",
+                linewidth=line_widths[dataset_name],
+                color=palette[dataset_name],
+                linestyle=line_styles[dataset_name],
+                label=(
+                    None
+                    if dataset_name == "Source Full"
+                    else f"{dataset_name} (N={len(group):,})"
+                ),
+                zorder=zorders[dataset_name],
+            )
+
+        ax.set_title(split_name, pad=10, fontweight="bold")
+        ax.set_ylabel("Sample Density")
+        ax.grid(True, axis="both", linewidth=1.0, alpha=0.8)
+        ax.legend(title=None, frameon=True, loc="upper right")
+
+    x_pad = 0.025 * max(x_max - x_min, 1e-8)
+    axes[-1].set_xlim(max(-0.1, x_min - x_pad), x_max + x_pad + 0.1)
+    axes[-1].set_xlabel("Spectroscopic Redshift")
+
+    fig.suptitle("Full VS Stratified Reduced Dataset: Redshift Distributions", y=0.998, fontsize=20, fontweight="bold",)
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig.tight_layout(rect=[0, 0, 1, 1])
+    fig.savefig(out_path, bbox_inches="tight")
+    fig.savefig(out_path.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+
+    return out_path
 
 def stratified_sample_indices(y, sample_size, num_bins=20, seed=42):
     rng = np.random.default_rng(seed)
@@ -369,9 +551,9 @@ def main(args):
     output_folder.mkdir(parents=True, exist_ok=True)
 
     source_paths = {
-        "training": input_folder / "5x64x64_training_with_morphology.hdf5",
-        "validation": input_folder / "5x64x64_validation_with_morphology.hdf5",
-        "testing": input_folder / "5x64x64_testing_with_morphology.hdf5",
+        "Train Subset": input_folder / "5x64x64_training_with_morphology.hdf5",
+        "Validation Subset": input_folder / "5x64x64_validation_with_morphology.hdf5",
+        "Testing Subset": input_folder / "5x64x64_testing_with_morphology.hdf5",
     }
 
     for split_name, path in source_paths.items():
@@ -392,21 +574,21 @@ def main(args):
 
         split_specs = [
             (
-                "training",
+                "Train Subset",
                 train_s,
-                source_paths["training"],
+                source_paths["Train Subset"],
                 out_dir / f"5x64x64_training_reduced_{keyword}.hdf5",
             ),
             (
-                "validation",
+                "Validation Subset",
                 val_s,
-                source_paths["validation"],
+                source_paths["Validation Subset"],
                 out_dir / f"5x64x64_validation_reduced_{keyword}.hdf5",
             ),
             (
-                "testing",
+                "Testing Subset",
                 test_s,
-                source_paths["testing"],
+                source_paths["Testing Subset"],
                 out_dir / f"5x64x64_testing_reduced_{keyword}.hdf5",
             ),
         ]
@@ -436,7 +618,7 @@ def main(args):
             stats_df = compare_redshift_hist(
                 full_y=full_y,
                 sampled_y=sampled_y,
-                out_path=plots_dir / f"{split_name}_redshift_hist.png",
+                out_path=plots_dir / f"{split_name.lower().replace(' ', '_')}_redshift_hist.png",
                 dataset_name=dataset_name,
                 split_name=split_name,
                 num_bins=50,
@@ -459,6 +641,15 @@ def main(args):
         archive_path = output_folder / f"{dataset_name}.tar.gz"
         make_tar_gz(out_dir, archive_path)
         logger.info(f"Saved archive to {archive_path}")
+
+
+    compare_redshift_combined(
+        input_folder=input_folder,
+        output_folder=output_folder,
+        out_path=output_folder / "redshift_distribution_full_vs_reduced.png",
+        tuning_internal_keyword="small",
+        final_internal_keyword="medium",
+    )
 
     all_stats_df = pd.concat(all_stats, ignore_index=True)
     all_stats_df.to_csv(output_folder / "redshift_iqr_stats.csv", index=False)

@@ -26,7 +26,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Literal, List, Tuple, Dict, Type, Optional, Union
-
+from collections import OrderedDict
 
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -37,6 +37,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # I/O helpers for json, HDF5StackWriter
 # Contributor: Leslie Horace
 # ==================================================
+
 
 def _detach_tensor(value):
     if isinstance(value, np.ndarray):
@@ -235,67 +236,65 @@ def make_tar_gz(src_dir, tar_path):
 
     return tar_path
 
+
 class GalaxiesMLDataset(pt.utils.data.Dataset):
     def __init__(
         self,
         hdf5_path,
-        input_key="image",
-        target_key=None,
-        auxiliary_key=None,
-        transform=None,
-        target_transform=None,
-        auxiliary_transform=None,
+        data_keys=None,
         max_samples=None,
+        return_dict=True,
     ):
-        
-        """_summary_
-
-        Raises:
-            KeyError: _description_
-            KeyError: _description_
-            ValueError: _description_
-            KeyError: _description_
-            ValueError: _description_
-        """
         self.hdf5_path = str(hdf5_path)
-        self.input_key = input_key
-        self.target_key = target_key
-        self.auxiliary_key = auxiliary_key
-        self.transform = transform
-        self.target_transform = target_transform
-        self.auxiliary_transform = auxiliary_transform
         self.max_samples = max_samples
+        self.return_dict = bool(return_dict)
         self._file = None
 
         with h5py.File(self.hdf5_path, "r") as f:
-            if self.input_key not in f:
-                raise KeyError(f"Missing dataset key: {self.input_key}")
+            if data_keys is None:
+                data_keys = list(f.keys())
+            elif isinstance(data_keys, str):
+                data_keys = [data_keys]
 
-            self.length = f[self.input_key].shape[0]
+            if isinstance(data_keys, dict):
+                # output_name -> hdf5_key
+                self.key_map = dict(data_keys)
+            else:
+                # output_name == hdf5_key
+                data_keys = list(data_keys)
+                self.key_map = {key: key for key in data_keys}
 
-            if self.target_key is not None:
-                if isinstance(self.target_key, (list, tuple)):
-                    for key in self.target_key:
-                        if key not in f:
-                            raise KeyError(f"Missing dataset key: {key}")
-                        if f[key].shape[0] != self.length:
-                            raise ValueError(f"Length mismatch for target key: {key}")
-                else:
-                    if self.target_key not in f:
-                        raise KeyError(f"Missing dataset key: {self.target_key}")
-                    if f[self.target_key].shape[0] != self.length:
-                        raise ValueError(f"Length mismatch for target key: {self.target_key}")
+            if len(self.key_map) < 1:
+                raise ValueError("data_keys must contain at least one HDF5 dataset key")
 
-            if self.auxiliary_key is not None:
-                if self.auxiliary_key not in f:
-                    raise KeyError(f"Missing dataset key: {self.auxiliary_key}")
-                if f[self.auxiliary_key].shape[0] != self.length:
-                    raise ValueError(f"Length mismatch for auxiliary key: {self.auxiliary_key}")
+            self.output_keys = list(self.key_map.keys())
+            self.data_keys = list(self.key_map.values())
+
+            missing = [key for key in self.data_keys if key not in f]
+            if missing:
+                raise KeyError(
+                    f"Missing dataset keys in {self.hdf5_path}: {missing}\n"
+                    f"Available keys: {list(f.keys())}"
+                )
+
+            self.length = f[self.data_keys[0]].shape[0]
+
+            for key in self.data_keys:
+                if f[key].shape[0] != self.length:
+                    raise ValueError(
+                        f"Length mismatch for key {key}: "
+                        f"got {f[key].shape[0]}, expected {self.length}"
+                    )
 
             if self.max_samples is not None:
-                self.length = min(self.length, self.max_samples)
+                self.length = min(self.length, int(self.max_samples))
 
-            self.sample_shape = tuple(f[self.input_key].shape[1:])
+            self.sample_shapes = {
+                output_key: tuple(f[hdf5_key].shape[1:])
+                for output_key, hdf5_key in self.key_map.items()
+            }
+
+            self.sample_shape = self.sample_shapes[self.output_keys[0]]
 
     def _get_file(self):
         if self._file is None:
@@ -305,53 +304,63 @@ class GalaxiesMLDataset(pt.utils.data.Dataset):
     def __len__(self):
         return self.length
 
-    def _to_input_tensor(self, value):
-        arr = np.asarray(value)
-        if arr.shape == ():
-            return pt.tensor(arr.item(), dtype=pt.float32)
-        return pt.from_numpy(arr).to(pt.float32)
+    def close(self):
+        if self._file is not None:
+            self._file.close()
+            self._file = None
 
-    def _to_target_tensor(self, value):
+    def _to_tensor_or_value(self, value):
         arr = np.asarray(value)
 
         if arr.shape == ():
+            item = arr.item()
+
+            if hasattr(item, "decode"):
+                return item.decode("utf-8")
+
             if np.issubdtype(arr.dtype, np.integer):
-                return pt.tensor(arr.item(), dtype=pt.long)
-            if np.issubdtype(arr.dtype, np.floating):
-                return pt.tensor(arr.item(), dtype=pt.float32)
-            return pt.tensor(arr.item())
+                return pt.tensor(item, dtype=pt.long)
 
-        t = pt.from_numpy(arr)
-        if pt.is_floating_point(t):
-            return t.to(pt.float32)
-        return t
+            if np.issubdtype(arr.dtype, np.floating):
+                return pt.tensor(item, dtype=pt.float32)
+
+            return item
+
+        if arr.dtype.kind in {"S", "U", "O"}:
+            decoded = []
+            for item in arr:
+                if hasattr(item, "decode"):
+                    decoded.append(item.decode("utf-8"))
+                else:
+                    decoded.append(item)
+            return decoded
+
+        tensor = pt.from_numpy(arr)
+
+        if pt.is_floating_point(tensor):
+            return tensor.to(pt.float32)
+
+        return tensor
 
     def __getitem__(self, idx):
         f = self._get_file()
 
-        x = self._to_input_tensor(f[self.input_key][idx])
-        if self.transform is not None:
-            x = self.transform(x)
+        sample = {
+            output_key: self._to_tensor_or_value(f[hdf5_key][idx])
+            for output_key, hdf5_key in self.key_map.items()
+        }
 
-        if self.target_key is None:
-            y = x
-        elif isinstance(self.target_key, (list, tuple)):
-            y = {key: self._to_target_tensor(f[key][idx]) for key in self.target_key}
-            if self.target_transform is not None:
-                y = self.target_transform(y)
-        else:
-            y = self._to_target_tensor(f[self.target_key][idx])
-            if self.target_transform is not None:
-                y = self.target_transform(y)
+        if self.return_dict:
+            return AttrDict(sample)
 
-        if self.auxiliary_key is None:
-            return x, y
+        return tuple(sample[key] for key in self.output_keys)
 
-        z = self._to_target_tensor(f[self.auxiliary_key][idx])
-        if self.auxiliary_transform is not None:
-            z = self.auxiliary_transform(z)
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
-        return x, y, z
 
 
 class AttrDict(dict):
@@ -460,6 +469,8 @@ def validate_tensor(name, x):
     if not pt.isfinite(x).all():
         raise ValueError(f"{name} contains NaN or Inf values")
     
+
+
 
 # ==================================================
 # CONTRIBUTION End: Lazy loader for GalaxiesMLDataset,

@@ -378,9 +378,9 @@ python src/tune_model.py \
 
     ```bash
     python src/train_model.py \
-    --config-file "configs/best_config_<first_name>_<mask_ratio>.json" \
+    --config-file "configs/best_config_<first_name>_mask_<mask_ratio>.json" \
     --input-folder "data/preprocessed/galaxiesml_medium" \
-    --output-folder "experiments/train_mae_medium_<first_name>_<mask_ratio>" \
+    --output-folder "experiments/train_mae_medium_<first_name>_mask_<mask_ratio>" \
     --gpu-memory-fraction 0.9 \
     --num-cores 5 \
     --validate-every-steps 100 \
@@ -393,85 +393,6 @@ python src/tune_model.py \
     > - Save outputs for downstream regression and analysis
 
 3. If the medium dataset doesn't work then everyone needs to use the small instead
-4. 
-### G. Handling downstream predictions
-
-1. Predict redshift with reconstructions (Chris)
-
-```python
-from src.utils.common import GalaxyMLDataset
-
-train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.hdf5"
-valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.hdf5"
-test_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.hdf5"
-
-train_data = GalaxiesMLDataset(train_path, input_key = "y_recon_image", target_key = "y_specz_redshift")
-valid_data = GalaxiesMLDataset(valid_path, input_key = "y_recon_image", target_key = "y_specz_redshift")
-test_data = GalaxiesMLDataset(test_path, input_key = "y_recon_image", target_key = "y_specz_redshift")
-```
-
-2. Predict redshift with the latents (Charlie)
-
-```python
-
-from src.utils.common import GalaxyMLDataset
-
-train_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/training_outputs_best.pth"
-valid_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/validation_outputs_best.pth"
-test_path = "./experiments/train_mae_medium_<first_name>_<mask_ratio>/artifacts/samples/testing_outputs_best.pth"
-
-train_data = GalaxiesMLDataset(train_path, input_key = "z_latent_vector", target_key = "y_specz_redshift")
-valid_data = GalaxiesMLDataset(valid_path, input_key = "z_latent_vector", target_key = "y_specz_redshift")
-test_data = GalaxiesMLDataset(test_path, input_key = "z_latent_vector", target_key = "y_specz_redshift")
-```
-
-### H. Analysis and Visualization
-
-> Here is a rundown of what experiments we need to analyze in the paper.
-> Please think about the best ways we can represent results and put any ideas you have!
 
 
-1. MAE experiments:
-
-   - Encoder
-     - Input: `x_masked_image`
-     - Output: `z_latent_vector`
-   - Decoder
-     - Input: `z_latent_vector`
-     - Output: `y_recon_image` 
-     - Target: `y_target_image` 
-   - Experiments: 
-     - `MAE-Baseline`: mask_ratio = 0.0
-     - `MAE-Ablation`: mask_ratio $\in \{0.0, 0.25, 0.5, 0.75\}$
-   - Analysis:
-     - (REQUIRED) Testing set: KDE plots for reconstruction error
-     - (REQUIRED) Training/validation set: learning curves for loss vs epochs
-     - (TBD) Latent visualization: TSNE plots OR something else interesting
-
-2. KNN experiments:
-
-   - KNN Model:
-     - Input: `z_latent_vector`
-     - Output: `y_pred_redshift`
-     - Target: `y_spez_redshift`
-    - KNN Tuning: 
-      - Tune KNN with best results for `MAE-Baseline` and save best params as fixed
-    - KNN Training: 
-      - Train KNN with best results for each `MAE-Ablation` with the fixed params 
-    - Analysis: 
-      - (REQUIRED) Testing set: prediction error plots
-      - (TBD) Training/validation set: learning curves OR something else interesting
-
-3. CNN experiments:
-
-   - CNN Model:
-     - Input: `y_recon_image`
-     - Output: `y_pred_redshift`
-     - Target: `y_spez_redshift`
-    - CNN Tuning: 
-      - Tune KNN with the original images from the source dataset and save best params as fixed
-    - CNN Training: 
-      - Train CNN with best model outputs results for `MAE-Baseline` and each `MAE-Ablation` with the fixed params 
-    - Analysis: 
-      - (REQUIRED) Testing set: prediction error plots
-      - (REQUIRED) Training/validation set: learning curves OR something else interesting
+### Need to update the readme for users instead of us

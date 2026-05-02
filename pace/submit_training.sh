@@ -30,7 +30,7 @@ submit() {
         echo "   to: $train_config"
     fi
 
-    local name="train_mae_${person}_${mask_ratio}"
+    local name="train_mae_medium_${person}_mask_${mask_ratio}"
     local job_id
 
     job_id=$(sbatch \
