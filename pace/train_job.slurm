@@ -88,6 +88,9 @@ if [ ! -d "$PREP_DIR" ]; then
 fi
 
 echo "starting tuning | person=$PERSON mask_ratio=$MASK_RATIO output=$OUTPUT_DIR"
+python "$PROJECT_DIR/src/dedupe_exports.py"
+
+wait
 
 python "$PROJECT_DIR/src/train_model.py" \
     --config-file "$CONFIG_FILE" \

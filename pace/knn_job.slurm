@@ -73,6 +73,10 @@ else
     KNN_ARGS+=(--params-file "$PARAMS_FILE")
 fi
 
+python "$PROJECT_DIR/src/dedupe_exports.py"
+
+wait
+
 srun -n 1 -c "$NUM_CORES" python -m src.analysis.knn_regressor "${KNN_ARGS[@]}"
 
 if [ "$PERSON" = "leslie" ] && [ "$MASK_RATIO" = "0.0" ]; then
