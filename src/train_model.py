@@ -1,8 +1,8 @@
 from src.utils.logger import get_logger, set_logger_level, log_execution_time
-from src.utils.common import argparse, os, copy, Path, pt, time, np, HDF5StackWriter, read_from_json, save_to_json, validate_tensor
+from src.utils.common import argparse, os, copy, Path, pt, time, np, make_tar_gz, HDF5StackWriter, read_from_json, save_to_json, validate_tensor
 from src.utils.config import validate_config, merge_config
 from src.utils.device import SetupDevice
-from src.utils.viz import plot_learning_curves, plot_image_samples
+from src.utils.viz import plot_image_samples, plot_learning_curves
 from src.preprocess_data import Normalize, PrepareDataset, PrepareDatasets
 from src.models.MaskedAutoencoder import MaskedAutoencoder
 from src.utils.losses import masked_reconstruction_loss
@@ -41,8 +41,12 @@ def process_args():
                 help="Validate every N optimizer steps | default: one epoch worth of optimizer steps")
     parser.add_argument('--disable-earlystop', dest='disable_earlystop', action='store_true', 
                 help="Force 'enable_earlystop' setting to be false regardless of config settings | default: Off")
-    
+    parser.add_argument('--resume-checkpoint', dest='resume_checkpoint', type=str, default=None,
+            help="Path to a checkpoint .pth file to resume training from | default: None")
+
     args = parser.parse_args()
+
+
 
 
     if isinstance(args.gpu_device_list, int):
@@ -62,6 +66,8 @@ def process_args():
     config_file = Path(args.config_file)
     if not config_file.is_file():
         raise FileNotFoundError(f"[--config-file] '{config_file}' does not exist")
+    if args.resume_checkpoint is not None and not Path(args.resume_checkpoint).is_file():
+        raise FileNotFoundError(f"[--resume-checkpoint] '{args.resume_checkpoint}' does not exist")
     
     return args
 
@@ -551,6 +557,30 @@ class ModelTrainer:
             },
         )
 
+        # ==================================================
+        # CONTRIBUTION START: save resume_checkpoint.pth
+        # Contributor: Wen Y
+        # ==================================================
+        resume_checkpoint_data = {
+            "model_state_dict":        self.mae_model.state_dict(),
+            "optimizer_state_dict":    self.optimizer.state_dict(),
+            "config":                  self.config,
+            "best_valid_loss":         self.best_valid_loss,
+            "best_epoch":              self.best_model_epoch,
+            "best_optimizer_step":     self.best_model_optimizer_step,
+            "optimizer_steps_total":   optimizer_steps_total,
+            "history":                 self.history,
+            "stop_reason":             stop_reason,
+        }
+        pt.save(resume_checkpoint_data, self.checkpoints_dir / "resume_checkpoint.pth")
+        self.logger.info(
+            f"[CHECKPOINT] Saved resume checkpoint -> {self.checkpoints_dir / 'resume_checkpoint.pth'} "
+            f"optimizer_steps_total={optimizer_steps_total} stop_reason={stop_reason}"
+        )
+        # ==================================================
+        # CONTRIBUTION END: save resume_checkpoint.pth
+        # ==================================================
+ 
         self.mae_model.load_state_dict(self.best_model_state)
 
         best_test_metrics = self.evaluate(self.mae_model, is_validation=False, epoch="best")
@@ -981,6 +1011,7 @@ class ModelTrainer:
         validate_every_steps=None,
         max_wallclock_hours=None,
         checkpoint_buffer_minutes=30.0,
+        resume_optimizer_steps=0,
     ):
         self.mae_model = self.mae_model.to(self.device)
 
@@ -1008,7 +1039,7 @@ class ModelTrainer:
         validate_every_steps = max(1, int(validate_every_steps))
 
         train_iter = iter(enumerate(self.train_loader, start=1))
-        optimizer_steps_done = 0
+        optimizer_steps_done = resume_optimizer_steps
         epoch = 1
         validation_checks = 0
         valid_loss = float("inf")
@@ -1146,6 +1177,7 @@ class ModelTrainer:
         validate_every_steps=None,
         max_wallclock_hours=None,
         checkpoint_buffer_minutes=30.0,
+        resume_optimizer_steps=0,
     ):
         if use_optimizer_steps:
             return self.train_by_optimizer_steps(
@@ -1153,6 +1185,7 @@ class ModelTrainer:
                 validate_every_steps=validate_every_steps,
                 max_wallclock_hours=max_wallclock_hours,
                 checkpoint_buffer_minutes=checkpoint_buffer_minutes,
+                resume_optimizer_steps=resume_optimizer_steps,
             )
 
         return self.train_by_epochs(
@@ -1192,12 +1225,14 @@ def main(args):
     train_config.update(config_update)
 
     trainer = ModelTrainer(train_config, args.input_folder, args.output_folder, device=device)
+
     results = trainer.train_model(
         use_optimizer_steps=True,
         max_optimizer_steps=args.max_optimizer_steps,
         validate_every_steps=args.validate_every_steps,
         max_wallclock_hours=args.max_wallclock_hours,
         checkpoint_buffer_minutes=args.checkpoint_buffer_minutes,
+        resume_optimizer_steps=resume_optimizer_steps,
     )
 
     logger.info(results)
@@ -1227,13 +1262,13 @@ if __name__ == "__main__":
 # make sure it works so far:
 """
 python src/train_model.py \
---config-file configs/train_overfit.json \
+--config-file configs/overfit_config.json \
 --input-folder data/preprocessed/galaxiesml_tiny \
---output-folder experiments/train_mae_tiny_debug \
+--output-folder experiments/train_mae_tiny_debug_overfit \
 --gpu-memory-fraction 0.9 \
---num-cores 2 \
---max-optimizer-steps 5 \
---validate-every-steps 2 \
+--num-cores 5 \
+--max-optimizer-steps 500 \
+--validate-every-steps 50 \
 --max-wallclock-hours 1.25 \
 --checkpoint-buffer-minutes 25 \
 --debug
