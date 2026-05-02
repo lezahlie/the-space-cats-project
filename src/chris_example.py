@@ -1,7 +1,7 @@
-from src.utils.common import pt, Path, GalaxiesMLDataset
+from utils.common import pt, Path, GalaxiesMLDataset
 
 # need to import Normalize to load/use transform object
-from src.preprocess_data import Normalize
+from preprocess_data import Normalize
 
 def load_results_example(project_path, batch_size = 32):
 
