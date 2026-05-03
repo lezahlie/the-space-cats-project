@@ -1,5 +1,6 @@
-from src.analysis.knn_regressor import plot_model_comparison
+from src.analysis.knn_regressor import plot_model_comparison, plot_test_scatter_grid
 from src.utils.common import argparse, Path, save_to_json, read_from_json
+import numpy as np
 import shutil
 
 RUNS = [
@@ -44,18 +45,15 @@ def main():
     ablation_dir.mkdir(parents=True, exist_ok=True)
 
     comparison_results = []
+    scatter_data = {}
     missing = []
+    missing_npz = []
 
     for person, mask_ratio in RUNS:
         run_name = f"train_mae_medium_{person}_mask_{mask_ratio}"
-        src_path = (
-            project_dir
-            / "experiments"
-            / "knn_results"
-            / run_name
-            / "knn_eval_metrics.json"
-        )
+        run_dir = project_dir / "experiments" / "knn_results" / run_name
 
+        src_path = run_dir / "knn_eval_metrics.json"
         dst_path = results_dir / f"{person}_{mask_ratio}.json"
 
         if not src_path.is_file():
@@ -63,7 +61,6 @@ def main():
             continue
 
         shutil.copy2(src_path, dst_path)
-
         test = load_test_metrics(dst_path)
 
         comparison_results.append(
@@ -84,6 +81,13 @@ def main():
             f"test_mae={test['mae']:.6f}"
         )
 
+        npz_path = run_dir / "knn_test_predictions.npz"
+        if npz_path.is_file():
+            data = np.load(npz_path)
+            scatter_data[mask_ratio] = (data["y_true"], data["y_pred"])
+        else:
+            missing_npz.append((person, mask_ratio, npz_path))
+
     if missing:
         print("\nMissing KNN result files:")
         for person, mask_ratio, path in missing:
@@ -93,11 +97,18 @@ def main():
             "Cannot make final KNN comparison until all four knn_eval_metrics.json files exist."
         )
 
+    if missing_npz:
+        print("\nMissing knn_test_predictions.npz (re-run knn_regressor.py to generate):")
+        for person, mask_ratio, path in missing_npz:
+            print(f"  person={person} mask_ratio={mask_ratio}: {path}")
+
     save_to_json(ablation_dir / "knn_comparison.json", comparison_results)
     plot_model_comparison(comparison_results, ablation_dir / "knn_comparison.png")
+    plot_test_scatter_grid(scatter_data, ablation_dir / "knn_test_scatter_grid.png")
 
-    print(f"\nSaved comparison JSON: {ablation_dir / 'knn_comparison.json'}")
-    print(f"Saved comparison plot: {ablation_dir / 'knn_comparison.png'}")
+    print(f"\nSaved comparison JSON:  {ablation_dir / 'knn_comparison.json'}")
+    print(f"Saved comparison plot:  {ablation_dir / 'knn_comparison.png'}")
+    print(f"Saved test scatter grid: {ablation_dir / 'knn_test_scatter_grid.png'}")
 
 
 if __name__ == "__main__":

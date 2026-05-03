@@ -207,6 +207,40 @@ def plot_tuning_results(tune_results, save_path):
     plt.close(fig)
 
 
+def plot_test_scatter_grid(results_by_mask_ratio, save_path):
+    """2x2 grid of KNN test-split scatter plots, one panel per mask ratio.
+
+    results_by_mask_ratio: dict mapping mask_ratio str -> (y_true, y_pred) arrays.
+    Missing mask ratios render as empty panels labelled "No data".
+    """
+    mask_ratios = ["0.0", "0.25", "0.5", "0.75"]
+    fig, axes = plt.subplots(2, 2, figsize=(10, 9))
+
+    for ax, mask_ratio in zip(axes.flat, mask_ratios):
+        if mask_ratio not in results_by_mask_ratio:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes, fontsize=12, color="gray")
+            ax.set_title(f"Mask Ratio = {mask_ratio}")
+            ax.set_xlabel("True Redshift (normalized)")
+            ax.set_ylabel("Predicted Redshift (normalized)")
+            continue
+
+        y_true, y_pred = results_by_mask_ratio[mask_ratio]
+        ax.scatter(y_true, y_pred, alpha=0.3, s=5, color=SPLIT_COLORS["test"])
+        vmin = min(float(y_true.min()), float(y_pred.min()))
+        vmax = max(float(y_true.max()), float(y_pred.max()))
+        ax.plot([vmin, vmax], [vmin, vmax], "k--", linewidth=1, label="y = x")
+        ax.set_title(f"Mask Ratio = {mask_ratio}")
+        ax.set_xlabel("True Redshift (normalized)")
+        ax.set_ylabel("Predicted Redshift (normalized)")
+        ax.legend(fontsize=8)
+
+    fig.suptitle("KNN Test Predictions by Mask Ratio", fontsize=14)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_model_comparison(comparison_results, save_path):
     labels = [r["label"] for r in comparison_results]
     r2s = [r["test_r2"] for r in comparison_results]
@@ -318,6 +352,11 @@ def run_model(input_folder, output_folder, fixed_params=None, model_file=None):
     save_to_json(output_folder / "knn_eval_metrics.json", all_metrics)
     logger.info(f"Evaluation metrics saved to: {output_folder / 'knn_eval_metrics.json'}")
 
+    np.savez(
+        output_folder / "knn_test_predictions.npz",
+        y_true=y_true_dict["test"],
+        y_pred=y_pred_dict["test"],
+    )
     plot_predictions(y_true_dict, y_pred_dict, output_folder / "knn_scatter.png")
     plot_error_kde(y_true_dict, y_pred_dict, output_folder / "knn_error_kde.png")
     logger.info(f"Plots saved to: {output_folder}")
