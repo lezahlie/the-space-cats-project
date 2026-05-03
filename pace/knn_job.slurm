@@ -73,7 +73,7 @@ else
     KNN_ARGS+=(--params-file "$PARAMS_FILE")
 fi
 
-python "$PROJECT_DIR/src/dedupe_exports.py"
+python -m src.dedupe_exports
 
 wait
 
