@@ -928,7 +928,7 @@ class HyperparameterSearch(ModelTrainer):
         self.best_overall_config.update({
             "num_epochs": 1000,
             "enable_earlystop": True,
-            "earlystop_patience": 20,
+            "earlystop_patience": 10,
             "log_epoch_frequency": 1,
             "log_batch_frequency": 0,
             "plot_last_batch_frequency": 500,
