@@ -1,7 +1,8 @@
 from src.utils.common import *
 from src.utils.viz import *
 
-MASK_ORDER = ["0.0", "0.25", "0.5", "0.75"]
+BASELINE_MASK = "0.0"
+MASK_ORDER = ["0.25", "0.5", "0.75"]
 BAND_NAMES = ("g", "r", "i", "z", "y")
 
 SPLIT_FILES = {
@@ -18,7 +19,7 @@ SPLIT_ALIASES = {
 }
 
 RUNS = {
-    "0.0": ("leslie", "train_mae_medium_leslie_mask_0.0"),
+    BASELINE_MASK: ("leslie", "train_mae_medium_leslie_mask_0.0"),
     "0.25": ("charlie", "train_mae_medium_charlie_mask_0.25"),
     "0.5": ("chris", "train_mae_medium_chris_mask_0.5"),
     "0.75": ("wen", "train_mae_medium_wen_mask_0.75"),
@@ -49,7 +50,6 @@ def build_default_mask_paths(
     file_name = SPLIT_FILES[split]
 
     mask_to_hdf5_path = {}
-    missing = []
 
     for mask_ratio, (person, default_run_name) in RUNS.items():
         if run_template is None:
@@ -70,14 +70,6 @@ def build_default_mask_paths(
         )
 
         mask_to_hdf5_path[mask_ratio] = h5_path
-
-        if not h5_path.is_file():
-            missing.append(h5_path)
-
-    if missing:
-        msg = "Missing required HDF5 files:\n"
-        msg += "\n".join(f"  {path}" for path in missing)
-        raise FileNotFoundError(msg)
 
     return mask_to_hdf5_path
 
@@ -113,7 +105,16 @@ def _require_hdf5_keys(h5_path, required_keys):
 def find_common_original_ids(mask_to_hdf5_path):
     common_ids = None
 
-    for mask_ratio, h5_path in mask_to_hdf5_path.items():
+    existing_paths = {
+        mask_ratio: Path(h5_path)
+        for mask_ratio, h5_path in mask_to_hdf5_path.items()
+        if h5_path is not None and Path(h5_path).is_file()
+    }
+
+    if not existing_paths:
+        raise ValueError("No existing mask-ratio HDF5 files were found")
+
+    for mask_ratio, h5_path in existing_paths.items():
         _require_hdf5_keys(h5_path, ["original_id"])
 
         with h5py.File(h5_path, "r") as f:
@@ -122,7 +123,7 @@ def find_common_original_ids(mask_to_hdf5_path):
         common_ids = ids if common_ids is None else common_ids.intersection(ids)
 
     if not common_ids:
-        raise ValueError("No shared original_id values across mask-ratio files")
+        raise ValueError("No shared original_id values across existing mask-ratio files")
 
     return sorted(common_ids)
 
@@ -175,29 +176,80 @@ def plot_original_mask_recon_by_ratio(
     cmap_name="inferno",
     save_pdf=True,
 ):
-    mask_to_hdf5_path = {str(k): Path(v) for k, v in mask_to_hdf5_path.items()}
-    present_masks = [m for m in MASK_ORDER if m in mask_to_hdf5_path]
+    mask_to_hdf5_path = {
+        str(k): None if v is None else Path(v)
+        for k, v in mask_to_hdf5_path.items()
+    }
+    baseline_path = mask_to_hdf5_path.get(BASELINE_MASK, None)
+    plot_masks = [m for m in MASK_ORDER if m in mask_to_hdf5_path]
 
-    if not present_masks:
-        raise ValueError("No valid mask ratios found in mask_to_hdf5_path")
-
-    if original_id is None:
-        original_id = find_common_original_ids(mask_to_hdf5_path)[int(sample_idx)]
-
-    samples = {
-        mask_ratio: load_hdf5_sample_by_original_id(
-            mask_to_hdf5_path[mask_ratio],
-            original_id=original_id,
-        )
-        for mask_ratio in present_masks
+    available_paths = {
+        mask_ratio: h5_path
+        for mask_ratio, h5_path in mask_to_hdf5_path.items()
+        if mask_ratio == BASELINE_MASK or mask_ratio in plot_masks
     }
 
-    target = np.asarray(samples[present_masks[0]]["y_target_image"], dtype=np.float32)
+    if not available_paths:
+        raise ValueError("No valid baseline or mask-ratio paths found in mask_to_hdf5_path")
 
-    rows = [("Original", target)]
+    if original_id is None:
+        original_id = find_common_original_ids(available_paths)[int(sample_idx)]
 
-    for mask_ratio in present_masks:
+    baseline_sample = None
+    if baseline_path is None or not Path(baseline_path).is_file():
+        print("Skipping baseline reconstruction: missing HDF5 file")
+    else:
+        try:
+            baseline_sample = load_hdf5_sample_by_original_id(
+                baseline_path,
+                original_id=original_id,
+            )
+        except ValueError as exc:
+            print(f"Skipping baseline reconstruction: {exc}")
+
+    samples = {}
+    for mask_ratio in plot_masks:
+        h5_path = mask_to_hdf5_path[mask_ratio]
+
+        if h5_path is None or not h5_path.is_file():
+            samples[mask_ratio] = None
+            print(f"Skipping mask={mask_ratio}: missing HDF5 file")
+            continue
+
+        try:
+            samples[mask_ratio] = load_hdf5_sample_by_original_id(
+                h5_path,
+                original_id=original_id,
+            )
+        except ValueError as exc:
+            samples[mask_ratio] = None
+            print(f"Skipping mask={mask_ratio}: {exc}")
+
+    loaded_masks = [
+        mask_ratio
+        for mask_ratio in plot_masks
+        if samples[mask_ratio] is not None
+    ]
+
+    if baseline_sample is None and not loaded_masks:
+        raise ValueError("No samples could be loaded from existing baseline or mask-ratio files")
+
+    target_source = baseline_sample if baseline_sample is not None else samples[loaded_masks[0]]
+    target = np.asarray(target_source["y_target_image"], dtype=np.float32)
+
+    rows = [("Original/\nBaseline", target)]
+    if baseline_sample is None:
+        rows.append(("Baseline\nRecon Y", None))
+    else:
+        rows.append(("Baseline\nRecon Y", baseline_sample["y_recon_image"]))
+
+    for mask_ratio in plot_masks:
         sample = samples[mask_ratio]
+
+        if sample is None:
+            rows.append((f"Masked X\nmask={mask_ratio}", None))
+            rows.append((f"Recon Y\nmask={mask_ratio}", None))
+            continue
 
         x_masked_nan = set_masked_values(
             sample["x_masked_image"],
@@ -211,12 +263,28 @@ def plot_original_mask_recon_by_ratio(
     num_rows = len(rows)
     num_bands = len(band_names)
 
+    band_fontsize = 16
+    label_fontsize = 16
+    title_fontsize = 16
+    cbar_tick_fontsize = 12
+
+    fig_width = (2.0 * num_bands) + 1.25
+    fig_height = 2.0 * num_rows
+
     fig, axes = plt.subplots(
         num_rows,
         num_bands,
-        figsize=(2.15 * num_bands, 1.75 * num_rows),
+        figsize=(fig_width, fig_height),
         squeeze=False,
     )
+
+
+    def _set_cbar_ticks(cbar, vmin=None, vmax=None):
+        ticks = np.linspace(vmin, vmax, 5)
+        cbar.set_ticks(ticks)
+        cbar.formatter = mtick.FormatStrFormatter("%.3g")
+        cbar.update_ticks()
+        cbar.ax.tick_params(labelsize=cbar_tick_fontsize, rotation=0)
 
     for row_idx, (row_label, row_images) in enumerate(rows):
         for band_idx, band_name in enumerate(band_names):
@@ -228,12 +296,13 @@ def plot_original_mask_recon_by_ratio(
             if np.isclose(vmin, vmax):
                 vmax = vmin + 1e-6
 
-            ax.imshow(
-                np.asarray(row_images[band_idx], dtype=np.float32),
-                cmap=cmap_name,
-                vmin=vmin,
-                vmax=vmax,
-            )
+            if row_images is not None:
+                im = ax.imshow(
+                    np.asarray(row_images[band_idx], dtype=np.float32),
+                    cmap=cmap_name,
+                    vmin=vmin,
+                    vmax=vmax
+                )
 
             ax.set_xticks([])
             ax.set_yticks([])
@@ -242,34 +311,35 @@ def plot_original_mask_recon_by_ratio(
                 spine.set_visible(False)
 
             if row_idx == 0:
-                ax.set_title(f"{band_name.upper()} band", fontsize=10, pad=6)
+                ax.set_title(f"{band_name.upper()} Band", fontsize=band_fontsize, pad=5)
 
             if band_idx == 0:
                 ax.set_ylabel(
                     row_label,
-                    fontsize=10,
-                    rotation=0,
-                    ha="right",
-                    va="center",
-                    labelpad=34,
+                    fontsize=label_fontsize,
+                    rotation=90,
+                    ha="center",
+                    va="bottom",
+                    labelpad=10,
                 )
+        # cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        # _set_cbar_ticks(cbar, vmin, vmax)
 
-    title = (
-        "Original, Masked Inputs, and Reconstructions by Mask Ratio"
-        f" | original_id={original_id}"
-    )
 
-    redshift = samples[present_masks[0]].get("y_specz_redshift", None)
+
+    title = f"MAE Samples | original_id={original_id}"
+
+    redshift = target_source.get("y_specz_redshift", None)
     if redshift is not None:
-        title += f" | redshift={float(redshift):.3f}"
+        title += f" | Redshift={float(redshift):.3f}"
 
-    fig.suptitle(title, fontsize=13, y=0.995)
-    fig.tight_layout(rect=[0.06, 0.0, 1.0, 0.975])
+    fig.suptitle(title, fontsize=title_fontsize, y=0.9975)
+    fig.tight_layout(rect=[0.10, 0, 1.0, 0.995])
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    fig.savefig(save_path, bbox_inches="tight")
 
     if save_pdf:
         fig.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
@@ -328,7 +398,7 @@ def main_cross_mask_samples():
         ),
     )
 
-    parser.add_argument("--mask-0", default=None, help="Optional path to mask_ratio=0.0 HDF5 output")
+    parser.add_argument("--baseline", default=None, help="Optional path to baseline mask_ratio=0.0 HDF5 output")
     parser.add_argument("--mask-25", default=None, help="Optional path to mask_ratio=0.25 HDF5 output")
     parser.add_argument("--mask-50", default=None, help="Optional path to mask_ratio=0.5 HDF5 output")
     parser.add_argument("--mask-75", default=None, help="Optional path to mask_ratio=0.75 HDF5 output")
@@ -340,23 +410,15 @@ def main_cross_mask_samples():
     args = parser.parse_args()
 
     explicit_paths = {
-        "0.0": args.mask_0,
+        BASELINE_MASK: args.baseline,
         "0.25": args.mask_25,
         "0.5": args.mask_50,
         "0.75": args.mask_75,
     }
 
     has_any_explicit = any(path is not None for path in explicit_paths.values())
-    has_all_explicit = all(path is not None for path in explicit_paths.values())
 
-    if has_any_explicit and not has_all_explicit:
-        missing = [mask for mask, path in explicit_paths.items() if path is None]
-        raise ValueError(
-            "If using explicit mask paths, provide all four. "
-            f"Missing masks: {missing}"
-        )
-
-    if has_all_explicit:
+    if has_any_explicit:
         mask_to_hdf5_path = explicit_paths
         split = "custom"
     else:
