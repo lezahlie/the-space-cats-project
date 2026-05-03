@@ -212,3 +212,52 @@ project_path = Path(__file__).resolve().parents[1]
 matched_loaders, matched_ids_by_split = load_results_example(project_path, batch_size=32)
 
 
+def _batch_ids_to_list(original_id):
+    if hasattr(original_id, "detach"):
+        original_id = original_id.detach().cpu()
+
+        if original_id.ndim == 1:
+            return [_original_id_to_key(x) for x in original_id]
+
+        return [_original_id_to_key(x) for x in original_id]
+
+    return [_original_id_to_key(x) for x in original_id]
+
+
+def check_matched_loaders(matched_loaders, matched_ids_by_split):
+
+    for split, split_loaders in matched_loaders.items():
+
+        print(f"\nChecking {split.upper()}")
+
+        expected_ids = matched_ids_by_split[split]
+        seen_ids = []
+
+        loader_items = list(split_loaders.items())
+
+        for batch_idx, batches in enumerate(zip(*[loader for _, loader in loader_items])):
+
+            batch_ids_by_run = {}
+
+            for (first_name, _), batch in zip(loader_items, batches):
+                batch_ids_by_run[first_name] = _batch_ids_to_list(batch.original_id)
+
+            reference_name = loader_items[0][0]
+            reference_ids = batch_ids_by_run[reference_name]
+
+            for first_name, original_ids in batch_ids_by_run.items():
+                assert original_ids == reference_ids, (
+                    f"Mismatch in {split}, batch {batch_idx}: "
+                    f"{reference_name} ids do not match {first_name} ids"
+                )
+
+            seen_ids.extend(reference_ids)
+
+        assert seen_ids == expected_ids, (
+            f"{split} IDs are aligned across loaders, but do not match matched_ids_by_split"
+        )
+
+        print(f"PASSED: {split} has {len(seen_ids)} matched original_ids across all mask ratios")
+
+
+check_matched_loaders(matched_loaders, matched_ids_by_split)
