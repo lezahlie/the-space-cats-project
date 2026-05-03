@@ -89,13 +89,9 @@ def main():
             missing_npz.append((person, mask_ratio, npz_path))
 
     if missing:
-        print("\nMissing KNN result files:")
+        print("\nMissing KNN result files (will appear as empty panels):")
         for person, mask_ratio, path in missing:
             print(f"  person={person} mask_ratio={mask_ratio}: {path}")
-
-        raise FileNotFoundError(
-            "Cannot make final KNN comparison until all four knn_eval_metrics.json files exist."
-        )
 
     if missing_npz:
         print("\nMissing knn_test_predictions.npz (re-run knn_regressor.py to generate):")
@@ -103,11 +99,15 @@ def main():
             print(f"  person={person} mask_ratio={mask_ratio}: {path}")
 
     save_to_json(ablation_dir / "knn_comparison.json", comparison_results)
-    plot_model_comparison(comparison_results, ablation_dir / "knn_comparison.png")
-    plot_test_scatter_grid(scatter_data, ablation_dir / "knn_test_scatter_grid.png")
-
     print(f"\nSaved comparison JSON:  {ablation_dir / 'knn_comparison.json'}")
-    print(f"Saved comparison plot:  {ablation_dir / 'knn_comparison.png'}")
+
+    if comparison_results:
+        plot_model_comparison(comparison_results, ablation_dir / "knn_comparison.png")
+        print(f"Saved comparison plot:  {ablation_dir / 'knn_comparison.png'}")
+    else:
+        print("Skipping comparison bar plot — no results found.")
+
+    plot_test_scatter_grid(scatter_data, ablation_dir / "knn_test_scatter_grid.png")
     print(f"Saved test scatter grid: {ablation_dir / 'knn_test_scatter_grid.png'}")
 
 
