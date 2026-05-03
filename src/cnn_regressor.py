@@ -118,7 +118,7 @@ def main():
         data_path = results_path / test_results
 
         if not data_path.exists():
-            print(f"Skipping {first_name} {split}. Missing: {data_path}")
+            print(f"Skipping {first_name}. Missing: {data_path}")
             continue
 
         # load results and original data
@@ -145,7 +145,7 @@ def main():
     # init new model
     model = RedshiftCNN() 
     # load model weight
-    state_dict = pt.load("path/to/redshift_cnn_model.pth", map_location=device, weights_only=True)
+    state_dict = pt.load(project_path / "redshift_cnn_model.pth", map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
 
     model.to(device)
@@ -174,7 +174,7 @@ def main():
                 x_recon_image = transform.inverse_transform(batch.x_recon_image).to(device)
                 x_original_image = transform.inverse_transform(batch.x_original_image).to(device)
                 y_original_redshift = transform.inverse_transform_specz(batch.y_original_redshift).to(device)
-                
+
                 ##############################################################
                 ##TODO Standardize the x_original_image,  x_recon_image, and _original_redshift
                 ##############################################################
