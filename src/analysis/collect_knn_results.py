@@ -1,5 +1,6 @@
-from src.analysis.knn_regressor import plot_model_comparison, plot_test_scatter_grid
-from src.utils.common import argparse, Path, save_to_json, read_from_json
+from src.analysis.knn_regressor import plot_model_comparison, plot_test_scatter_grid, load_split
+from src.utils.common import argparse, Path, save_to_json, read_from_json, load_from_yaml
+from sklearn.neighbors import KNeighborsRegressor
 import numpy as np
 import shutil
 
@@ -86,7 +87,29 @@ def main():
             data = np.load(npz_path)
             scatter_data[mask_ratio] = (data["y_true"], data["y_pred"])
         else:
-            missing_npz.append((person, mask_ratio, npz_path))
+            samples_dir = project_dir / "experiments" / run_name / "artifacts" / "samples"
+            params_yaml = run_dir / "knn_best_params.yaml"
+
+            if samples_dir.is_dir() and params_yaml.is_file():
+                print(f"  Regenerating predictions for mask_ratio={mask_ratio} from HDF5 + params yaml...")
+                params = load_from_yaml(params_yaml)
+
+                X_train, y_train = load_split(samples_dir / "training_outputs_best.hdf5")
+                X_valid, y_valid = load_split(samples_dir / "validation_outputs_best.hdf5")
+                X_test, y_test   = load_split(samples_dir / "testing_outputs_best.hdf5")
+
+                X_trainval = np.concatenate([X_train, X_valid], axis=0)
+                y_trainval = np.concatenate([y_train, y_valid], axis=0)
+
+                model = KNeighborsRegressor(**params)
+                model.fit(X_trainval, y_trainval)
+                y_pred = model.predict(X_test)
+
+                np.savez(npz_path, y_true=y_test, y_pred=y_pred)
+                scatter_data[mask_ratio] = (y_test, y_pred)
+                print(f"  Saved predictions to {npz_path}")
+            else:
+                missing_npz.append((person, mask_ratio, npz_path))
 
     if missing:
         print("\nMissing KNN result files (will appear as empty panels):")
