@@ -105,9 +105,12 @@ def main():
                 model.fit(X_trainval, y_trainval)
                 y_pred = model.predict(X_test)
 
-                np.savez(npz_path, y_true=y_test, y_pred=y_pred)
                 scatter_data[mask_ratio] = (y_test, y_pred)
-                print(f"  Saved predictions to {npz_path}")
+                try:
+                    np.savez(npz_path, y_true=y_test, y_pred=y_pred)
+                    print(f"  Saved predictions to {npz_path}")
+                except PermissionError:
+                    print(f"  No write permission to {npz_path}, skipping cache")
             else:
                 missing_npz.append((person, mask_ratio, npz_path))
 
