@@ -3,7 +3,47 @@ from src.utils.common import pt, Path, GalaxiesMLDataset
 # need to import Normalize to load/use transform object
 from src.preprocess_data import Normalize
 
-def load_results_example(project_path, batch_size = 32):
+
+def _original_id_to_key(original_id):
+    if hasattr(original_id, "detach"):
+        original_id = original_id.detach().cpu()
+
+        if original_id.numel() == 1:
+            original_id = original_id.item()
+        else:
+            original_id = tuple(original_id.flatten().tolist())
+
+    elif hasattr(original_id, "item"):
+        original_id = original_id.item()
+
+    if isinstance(original_id, bytes):
+        original_id = original_id.decode("utf-8")
+
+    return original_id
+
+
+def _get_sample_original_id(sample):
+    if isinstance(sample, dict):
+        return _original_id_to_key(sample["original_id"])
+
+    return _original_id_to_key(sample.original_id)
+
+
+def _build_original_id_index(dataset):
+    id_to_idx = {}
+
+    for idx in range(len(dataset)):
+        original_id = _get_sample_original_id(dataset[idx])
+
+        if original_id in id_to_idx:
+            raise ValueError(f"Duplicate original_id found: {original_id}")
+
+        id_to_idx[original_id] = idx
+
+    return id_to_idx
+
+
+def load_results_example(project_path, batch_size=32):
 
     # for getting result folders
     runs = {
@@ -30,15 +70,15 @@ def load_results_example(project_path, batch_size = 32):
     else:
         print("Skipping transform. Missing:", transform_path)
 
-    loaders = {}
+    datasets = {}
 
     for first_name, mask_ratio in runs.items():
 
         # path to everyones results
         results_path = Path(project_path) / f"experiments/train_mae_medium_{first_name}_mask_{mask_ratio}/artifacts/samples"
 
-        # pytorch dataloaders
-        loaders[first_name] = {}
+        # pytorch datasets
+        datasets[first_name] = {}
 
         for split, file_name in split_files.items():
             data_path = results_path / file_name
@@ -53,30 +93,80 @@ def load_results_example(project_path, batch_size = 32):
                 data_keys={
                     "x_masked_image": "x_masked_image",         # Masked Galaxy Image (Encoder Input)
                     "x_recon_image": "y_recon_image",           # Recon Galaxy Image (Decoder Output)
-                    "x_original_image": "y_target_image",       # Original Galaxy Image    
+                    "x_original_image": "y_target_image",       # Original Galaxy Image
                     "y_original_redshift": "y_specz_redshift",  # Original Redshift Scalar
                     "original_id": "original_id",               # Original Id from source dataset
                 },
                 return_dict=True,
             )
 
-            # pytorch datalaoders
-            loaders[first_name][split] = pt.utils.data.DataLoader(
-                dataset,
-                batch_size=batch_size,
-                shuffle=(split == "train"),
-            )
+            datasets[first_name][split] = dataset
 
+    # match original_ids across all four mask ratios
+    matched_loaders = {}
+    matched_ids_by_split = {}
 
-    # load the data and make sure it is correct
-    for first_name, split_loaders in loaders.items():
-        if len(split_loaders) == 0:
+    for split in split_files.keys():
+
+        # make sure every mask ratio has this split
+        available_names = [
+            first_name
+            for first_name in runs.keys()
+            if split in datasets[first_name]
+        ]
+
+        if len(available_names) != len(runs):
+            print(f"Skipping {split}. Only found {available_names}, expected all runs.")
             continue
 
-        print(f"\n{first_name.upper()}")
+        # map each original_id to its dataset index
+        id_maps = {
+            first_name: _build_original_id_index(datasets[first_name][split])
+            for first_name in available_names
+        }
 
-        for split, loader in split_loaders.items():
-            print(f"\n[{split.upper()} Split]")
+        # keep only original_ids that exist for every mask ratio
+        common_ids = set.intersection(*[
+            set(id_map.keys())
+            for id_map in id_maps.values()
+        ])
+
+        # sort so every mask ratio has the same order
+        matched_ids = sorted(common_ids)
+        matched_ids_by_split[split] = matched_ids
+
+        print(f"\n{split.upper()} matched original_ids: {len(matched_ids)}")
+
+        matched_loaders[split] = {}
+
+        for first_name in runs.keys():
+
+            # get indices in the same original_id order for each mask ratio
+            matched_indices = [
+                id_maps[first_name][original_id]
+                for original_id in matched_ids
+            ]
+
+            matched_dataset = pt.utils.data.Subset(
+                datasets[first_name][split],
+                matched_indices,
+            )
+
+            # pytorch dataloaders
+            matched_loaders[split][first_name] = pt.utils.data.DataLoader(
+                matched_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+            )
+
+    # load the data and make sure it is correct
+    for split, split_loaders in matched_loaders.items():
+
+        print(f"\n[{split.upper()} Split]")
+
+        for first_name, loader in split_loaders.items():
+
+            print(f"\n{first_name.upper()} mask_ratio={runs[first_name]}")
 
             for batch_idx, batch in enumerate(loader):
                 x_masked_image = batch.x_masked_image
@@ -84,7 +174,6 @@ def load_results_example(project_path, batch_size = 32):
                 x_original_image = batch.x_original_image
                 y_original_redshift = batch.y_original_redshift
                 original_id = batch.original_id
-
 
                 print("Batch:", batch_idx)
                 print("original_id:", original_id[:3])
@@ -113,11 +202,13 @@ def load_results_example(project_path, batch_size = 32):
 
                 break
 
-
+    return matched_loaders, matched_ids_by_split
 
 
 # update to project root: /path/to/the-space-cats-project
 project_path = Path(__file__).resolve().parents[1]
 
 # run the example
-load_results_example(project_path, batch_size=32)
+matched_loaders, matched_ids_by_split = load_results_example(project_path, batch_size=32)
+
+
