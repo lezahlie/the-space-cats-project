@@ -394,5 +394,64 @@ python src/tune_model.py \
 
 3. If the medium dataset doesn't work then everyone needs to use the small instead
 
+## Step 3: KNN Latent Space Regression
+### Overview
+The KNN regressor evaluates whether the MAE latent space preserves redshift-relevant structure. It takes the encoder's latent vectors (`z_latent_vector`) as input and predicts spectroscopic redshift (`y_specz_redshift`). Results are compared across all four mask ratios to assess how masking affects latent representation quality.
+
+- **Baseline (mask=0.0)**: MAE outputs with masked ratio of 0.0 are used to tune KNN hyperparameters and save a shared best config
+- **Ablations (mask=0.25, 0.5, 0.75)**: All other team members use the shared best config to run KNN evaluation
+
+### Prerequisites
+
+- MAE training must be complete and outputs must be saved to:
+  ```
+  experiments/train_mae_medium_<first_name>_mask_<mask_ratio>/artifacts/samples/
+  ```
+- Required files per experiment: `training_outputs_best.hdf5`, `validation_outputs_best.hdf5`, `testing_outputs_best.hdf5`
+
+### A. Run on PACE-ICE
+
+Submit your KNN job (runs automatically after MAE training outputs are available):
+
+```bash
+# Submit your job only
+bash pace/submit_knn.sh <first_name>
+
+# Example
+bash pace/submit_knn.sh wen
+```
+
+ **Note**: Baseline job (mask=0.0) must complete first — it tunes the KNN and saves shared hyperparameters to `configs/knn_best_params.yaml`. All other jobs depend on this file.
+
+### B. Run manually
+
+```bash
+# Baseline (tunes KNN, saves best params)
+python -m src.analysis.knn_regressor \
+    --input-folder "experiments/train_mae_medium_leslie_mask_0.0/artifacts/samples" \
+    --output-folder "experiments/knn_results/train_mae_medium_leslie_mask_0.0"
+
+# Ablations (uses shared best params)
+python -m src.analysis.knn_regressor \
+    --input-folder "experiments/train_mae_medium_<first_name>_mask_<mask_ratio>/artifacts/samples" \
+    --output-folder "experiments/knn_results/train_mae_medium_<first_name>_mask_<mask_ratio>" \
+    --params-file "configs/knn_best_params.yaml"
+```
+
+### C. Outputs
+
+Results are saved to `experiments/knn_results/train_mae_medium_<first_name>_mask_<mask_ratio>/`:
+
+```
+knn_results/
+├── knn_best_params.yaml       ← best hyperparameters (baseline only, copied to configs/)
+├── knn_predictions.csv        ← per-sample predictions and ground truth
+└── knn_metrics.json           ← summary metrics (MAE, MSE, R²)
+```
+
+---
+
+## Step 4: CNN Reconstruction Regression
+### Overview
 
 ### Need to update the readme for users instead of us
