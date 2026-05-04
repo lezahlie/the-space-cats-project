@@ -1,22 +1,46 @@
+# Galaxy Representation Learning via Partial Reconstruction with Masked Autoencoders
 
-## Step 1: Local Project Setup
+This repository implements a self-supervised learning pipeline for galaxy image reconstruction using masked autoencoders (MAE). The pipeline includes hyperparameter tuning, model training, and downstream evaluation of learned representations via KNN and CNN regressors for spectroscopic redshift prediction.
+
+## Overview
+
+The full pipeline consists of five stages:
+
+1. **Environment setup** — install dependencies and download data
+2. **MAE experiments** — preprocess data, tune hyperparameters, and train the masked autoencoder
+3. **KNN evaluation** — evaluate latent representations via redshift regression
+4. **CNN evaluation** — evaluate reconstructed images via redshift regression
+5. **Analysis and plotting** — generate figures and summary tables for the paper
+
+---
+
+## Step 1: Environment Setup
 
 ### A. Prerequisites
 
-1. **Required**: POSIX compatible shell in a Linux/Unix-based environment
-2. **Required**: Miniconda OR Anaconda installation that supports Python version 3.10
-3. **Required**: Clone the project repo from github
-4. **Required**: Checkout your branch to implement your work on
+- POSIX-compatible shell (Linux/Unix/macOS)
+- Miniconda or Anaconda with Python 3.10
+- Git
 
-    ```bash
-    git checkout branch <your first name>
-    ```
+Clone the repository:
 
-    > Don't forget to pull main and backup your changes before merging to main
+```bash
+git clone <https://github.com/lezahlie/the-space-cats-project.git>
+cd the-space-cats-project
+```
 
-5. **Required**: Determine which environment your host architecture supports
+### B. Choose your environment
+
+Select the environment file that matches your hardware:
+
+| File | Hardware |
+|------|----------|
+| `cuda_environment.yml` | NVIDIA GPU (CUDA) |
+| `mps_environment.yml` | Apple Silicon (MPS) |
+| `cpu_environment.yml` | CPU only |
+
    
-    A. [cuda_environment.yml](./cuda_environment.yml): PyTorch `Stable` release built with `CUDA` support for Nvidia GPUs
+A. [cuda_environment.yml](./cuda_environment.yml): PyTorch `Stable` release built with `CUDA` support for Nvidia GPUs
 
     - If the environment file fails, try to manually install instead:
 
@@ -36,7 +60,7 @@
 
     > Note: `pytorch-cuda=11.8` often works with newer NVIDIA drivers. Only upgrade `pytorch-cuda` to `12.1` or `12.4` if `11.8` does not work on your system or your hardware requires it. If you need to change this, please update only `pytorch-cuda` first.
 
-    B. [mps_environment.yml](./mps_environment.yml): PyTorch `Stable` release including Apple Silicon  `MPS` support (macOS 12.3+)
+B. [mps_environment.yml](./mps_environment.yml): PyTorch `Stable` release including Apple Silicon  `MPS` support (macOS 12.3+)
 
     - If the environment file fails, try to manually install instead:
 
@@ -53,7 +77,7 @@
         conda install -c pytorch -c conda-forge pytorch=2.4.1 torchvision=0.19.1  -y
         ```
 
-    C. [cpu_environment.yml](./cpu_environment.yml): PyTorch `Stable` release with `CPU-ONLY` build
+C. [cpu_environment.yml](./cpu_environment.yml): PyTorch `Stable` release with `CPU-ONLY` build
 
     - If the environment file fails, try to manually install instead:
 
@@ -69,8 +93,6 @@
 
         conda install -c pytorch -c conda-forge pytorch=2.4.1 torchvision=0.19.1 cpuonly -y
         ```
-
-### B. Environment
 
 #### Google Colab Setup
 
@@ -336,13 +358,13 @@ Dataset download page: https://zenodo.org/records/11117528
 
 ### E. Tune the model 
 
-### Important Notes: 
+#### Important Notes: 
 
 1. `tune_model.py` autodetects and recovers completed stages and trials from saved CSV logs.
 2. Each trial runs for at most `--tune-optimizer-steps` optimizer updates, unless capped earlier by `num_epochs * batches_per_epoch`.
 3. A trial stops early if either of these happens:
    - its validation loss does not improve for `epoch_patience=4` consecutive validation checks
-     - `epoch_patience=4` is defined in `configs/tune_default.json`)
+     - `epoch_patience=4` is defined in `configs/tune_default.json`
    - after a current best exists, it fails to beat the current best validation loss within `tune_patience=4 * validate_every_steps=100` optimizer updates after the current best trial's best optimizer step
      - `tune_patience` and `validate_every_steps` are defined in the pace scripts and in the command below
 4. Tuning only runs `64` total trials now with early stopping per-trial and across trials
@@ -395,63 +417,88 @@ python src/tune_model.py \
 3. If the medium dataset doesn't work then everyone needs to use the small instead
 
 ## Step 3: KNN Latent Space Regression
-### Overview
-The KNN regressor evaluates whether the MAE latent space preserves redshift-relevant structure. It takes the encoder's latent vectors (`z_latent_vector`) as input and predicts spectroscopic redshift (`y_specz_redshift`). Results are compared across all four mask ratios to assess how masking affects latent representation quality.
 
-- **Baseline (mask=0.0)**: MAE outputs with masked ratio of 0.0 are used to tune KNN hyperparameters and save a shared best config
-- **Ablations (mask=0.25, 0.5, 0.75)**: All other team members use the shared best config to run KNN evaluation
+### Overview
+The KNN regressor evaluates whether the MAE latent space preserves redshift-relevant structure. It uses encoder latent vectors (`z_latent_vector`) as input features to predict spectroscopic redshift (`y_specz_redshift`).
 
 ### Prerequisites
 
-- MAE training must be complete and outputs must be saved to:
-  ```
-  experiments/train_mae_medium_<first_name>_mask_<mask_ratio>/artifacts/samples/
-  ```
-- Required files per experiment: `training_outputs_best.hdf5`, `validation_outputs_best.hdf5`, `testing_outputs_best.hdf5`
-
-### A. Run on PACE-ICE
-
-Submit your KNN job (runs automatically after MAE training outputs are available):
-
-```bash
-# Submit your job only
-bash pace/submit_knn.sh <first_name>
-
-# Example
-bash pace/submit_knn.sh wen
+MAE training must be complete with outputs saved to:
+```
+experiments/train_mae_medium_<run_name>/artifacts/samples/
 ```
 
- **Note**: Baseline job (mask=0.0) must complete first — it tunes the KNN and saves shared hyperparameters to `configs/knn_best_params.yaml`. All other jobs depend on this file.
+### A. Tune KNN (baseline only)
 
-### B. Run manually
+Run this once on the mask=0.0 experiment to find the best KNN hyperparameters:
 
 ```bash
-# Baseline (tunes KNN, saves best params)
 python -m src.analysis.knn_regressor \
-    --input-folder "experiments/train_mae_medium_leslie_mask_0.0/artifacts/samples" \
-    --output-folder "experiments/knn_results/train_mae_medium_leslie_mask_0.0"
+    --input-folder "experiments/train_mae_medium_<baseline_run>/artifacts/samples" \
+    --output-folder "experiments/knn_results/<baseline_run>"
+```
 
-# Ablations (uses shared best params)
+This saves `knn_best_params.yaml` to the output folder. Copy it to configs:
+
+```bash
+cp "experiments/knn_results/<baseline_run>/knn_best_params.yaml" \
+   "configs/knn_best_params.yaml"
+```
+
+### B. Evaluate all mask ratios
+
+Use the shared best params to evaluate each mask ratio:
+
+```bash
 python -m src.analysis.knn_regressor \
-    --input-folder "experiments/train_mae_medium_<first_name>_mask_<mask_ratio>/artifacts/samples" \
-    --output-folder "experiments/knn_results/train_mae_medium_<first_name>_mask_<mask_ratio>" \
+    --input-folder "experiments/train_mae_medium_<run_name>/artifacts/samples" \
+    --output-folder "experiments/knn_results/<run_name>" \
     --params-file "configs/knn_best_params.yaml"
+```
+
 ```
 
 ### C. Outputs
 
-Results are saved to `experiments/knn_results/train_mae_medium_<first_name>_mask_<mask_ratio>/`:
+```
+experiments/knn_results/<run_name>/
+├── knn_predictions.csv     ← per-sample predictions and ground truth
+└── knn_metrics.json        ← MAE, MSE, R² on test set
+```
+
+--
+
+## Step 4: CNN Reconstruction Regression (# TO BE UPDATED)
+
+The CNN regressor evaluates whether reconstructed images preserve enough photometric information for redshift prediction. It compares redshift predictions from reconstructed images (`y_recon_image`) against predictions from the original images (`y_target_image`).
+
+### Prerequisites
+
+- MAE training outputs available (same as KNN)
+- Trained CNN model weights at `___place holder___`
+- Best CNN config at `___place holder___`
+
+
+### A. Run evaluation across all mask ratios
+
+```bash
+python src/analysis/evaluate_cnn_all_masks.py
+```
+
+> Edit `HDF5_PATHS` and `MODEL_PATH` at the top of the script to match your experiment paths.
+
+### B. Outputs
 
 ```
-knn_results/
-├── knn_best_params.yaml       ← best hyperparameters (baseline only, copied to configs/)
-├── knn_predictions.csv        ← per-sample predictions and ground truth
-└── knn_metrics.json           ← summary metrics (MAE, MSE, R²)
+experiments/cnn_evaluation/
+├── cnn_predictions_all_images.csv   ← per-image predictions for all mask ratios
+└── cnn_predictions_summary.csv      ← p5/p50/p95 delta summary per mask ratio
 ```
+
+**Notes:**
+- Images are de-normalized from MAE scale (`ORIG_MIN=-137.36`, `ORIG_MAX=852.43`) before CNN inference
+- CNN normalization uses per-channel mean/std from CNN training data
+- Evaluation uses `testing_outputs_best.hdf5` only (held-out test set)
+- Images are matched across mask ratios by `original_id` for fair comparison
 
 ---
-
-## Step 4: CNN Reconstruction Regression
-### Overview
-
-### Need to update the readme for users instead of us
