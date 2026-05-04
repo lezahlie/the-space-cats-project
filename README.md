@@ -453,10 +453,9 @@ Use the shared best params to evaluate each mask ratio:
 python -m src.analysis.knn_regressor \
     --input-folder "experiments/train_mae_medium_<run_name>/artifacts/samples" \
     --output-folder "experiments/knn_results/<run_name>" \
-    --params-file "configs/knn_best_params.yaml"
+    --params-file "configs/knn_best_params.yaml" \
 ```
 
-```
 
 ### C. Outputs
 
@@ -482,12 +481,12 @@ The CNN regressor evaluates whether reconstructed images preserve enough photome
 ### A. Run evaluation across all mask ratios
 
 ```bash
-python src/analysis/evaluate_cnn_all_masks.py
+python src/analysis/evaluate_cnn_all_masks.py  # PLACE HOLDER, TO BE UPDATED
 ```
 
 > Edit `HDF5_PATHS` and `MODEL_PATH` at the top of the script to match your experiment paths.
 
-### B. Outputs
+### B. Outputs (# TO BE UPDATED)
 
 ```
 experiments/cnn_evaluation/
@@ -495,10 +494,33 @@ experiments/cnn_evaluation/
 └── cnn_predictions_summary.csv      ← p5/p50/p95 delta summary per mask ratio
 ```
 
-**Notes:**
-- Images are de-normalized from MAE scale (`ORIG_MIN=-137.36`, `ORIG_MAX=852.43`) before CNN inference
+**Notes:** # TO BE UPDATED
 - CNN normalization uses per-channel mean/std from CNN training data
 - Evaluation uses `testing_outputs_best.hdf5` only (held-out test set)
 - Images are matched across mask ratios by `original_id` for fair comparison
+
+---
+
+## Step 5: Generate Analysis Plots (# TO BE UPDATED)
+
+After all experiments are complete, generate figures for reference:
+
+```bash
+# MAE learning curves (train/validation loss by mask ratio)
+python src/analysis/mae_curves.py
+
+# MAE reconstruction error plots
+python src/analysis/mae_evaluation.py
+
+# MAE sample image plots (masked input, target, reconstruction)
+python src/analysis/mae_samples.py
+
+# KNN results aggregation
+python src/analysis/collect_knn_results.py
+
+# CNN results aggregation (# TO BE UPDATED)
+python src/analysis/___PLACE HOLDER____
+
+All figures are saved as `.pdf` to `figures/`.  (# TO BE UPDATED)
 
 ---
