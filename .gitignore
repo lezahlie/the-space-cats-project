@@ -11,6 +11,8 @@
 **/experiments/
 **/logs/
 **/temp/
+**/*.pth
+**/*.pkl
 **/*.tar.gz
 !**/src/analysis  
 !**/*.py
