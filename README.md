@@ -423,10 +423,7 @@ The KNN regressor evaluates whether the MAE latent space preserves redshift-rele
 
 ### Prerequisites
 
-MAE training must be complete with outputs saved to:
-```
-experiments/train_mae_medium_<run_name>/artifacts/samples/
-```
+- MAE training outputs (`testing_outputs_best.hdf5`) available for all mask ratios
 
 ### A. Tune KNN (baseline only)
 
@@ -467,60 +464,59 @@ experiments/knn_results/<run_name>/
 
 --
 
-## Step 4: CNN Reconstruction Regression (# TO BE UPDATED)
+## Step 4: CNN Reconstruction Regression
 
 The CNN regressor evaluates whether reconstructed images preserve enough photometric information for redshift prediction. It compares redshift predictions from reconstructed images (`y_recon_image`) against predictions from the original images (`y_target_image`).
 
 ### Prerequisites
 
-- MAE training outputs available (same as KNN)
-- Trained CNN model weights at `___place holder___`
-- Best CNN config at `___place holder___`
-
+- MAE training outputs (`testing_outputs_best.hdf5`) available for all mask ratios
+- Trained CNN model weights: `redshift_cnn_model.pth`
 
 ### A. Run evaluation across all mask ratios
 
-```bash
-python src/analysis/evaluate_cnn_all_masks.py  # PLACE HOLDER, TO BE UPDATED
-```
+See CNN implementation and instructions for running the redshift regression model and generating predictions across all mask ratios.
 
-> Edit `HDF5_PATHS` and `MODEL_PATH` at the top of the script to match your experiment paths.
-
-### B. Outputs (# TO BE UPDATED)
+### B. Outputs
 
 ```
-experiments/cnn_evaluation/
-├── cnn_predictions_all_images.csv   ← per-image predictions for all mask ratios
-└── cnn_predictions_summary.csv      ← p5/p50/p95 delta summary per mask ratio
+- Summary table of average absolute redshift prediction delta per mask ratio
+- Line plot of prediction delta vs mask ratio (original vs reconstructed)
+- Side-by-side visualization of reconstructions across mask ratios for a sample image
+- Per-sample redshift prediction comparison table
 ```
 
-**Notes:** # TO BE UPDATED
+**Notes:** 
+- De-normalization uses MAE training stats: `ORIG_MIN=-137.36`, `ORIG_MAX=852.43`
 - CNN normalization uses per-channel mean/std from CNN training data
 - Evaluation uses `testing_outputs_best.hdf5` only (held-out test set)
-- Images are matched across mask ratios by `original_id` for fair comparison
 
 ---
 
 ## Step 5: Generate Analysis Plots (# TO BE UPDATED)
 
-After all experiments are complete, generate figures for reference:
+After all experiments are complete, run the plotting scripts to generate figures. All outputs are saved to `analysis/`:
 
 ```bash
 # MAE learning curves (train/validation loss by mask ratio)
 python src/analysis/mae_curves.py
+# → analysis/learning_curves/learning_curves_objective_loss.pdf
+# → analysis/learning_curves/train_validation_gap_violin_objective_loss.pdf
 
-# MAE reconstruction error plots
+# MAE reconstruction error plots (KDE and box plots by mask ratio)
 python src/analysis/mae_evaluation.py
+# → analysis/reconstruction_error/mae_kde_plot.pdf
+# → analysis/reconstruction_error/masked_mae_kde_plot.pdf
+# → analysis/reconstruction_error/masked_error_summary_box_plot.pdf
 
-# MAE sample image plots (masked input, target, reconstruction)
+# MAE sample image plots (masked input, target, reconstruction across mask ratios)
 python src/analysis/mae_samples.py
+# → analysis/sample_plots/mae_cross_mask_testing_sample_0.pdf
 
 # KNN results aggregation
 python src/analysis/collect_knn_results.py
+```
 
-# CNN results aggregation (# TO BE UPDATED)
-python src/analysis/___PLACE HOLDER____
-
-All figures are saved as `.pdf` to `figures/`.  (# TO BE UPDATED)
+All figures are saved as both `.pdf` (for paper) and `.png` (for preview) to `analysis/`.
 
 ---
