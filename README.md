@@ -453,7 +453,6 @@ python -m src.analysis.knn_regressor \
     --params-file "configs/knn_best_params.yaml" \
 ```
 
-
 ### C. Outputs
 
 ```
@@ -475,7 +474,7 @@ The CNN regressor evaluates whether reconstructed images preserve enough photome
 
 ### A. Run evaluation across all mask ratios
 
-See CNN implementation and instructions for running the redshift regression model and generating predictions across all mask ratios.
+ `src/cnn_regressor.py` to run the redshift regression model and generating predictions across all mask ratios.
 
 ### B. Outputs
 
@@ -515,8 +514,12 @@ python src/analysis/mae_samples.py
 
 # KNN results aggregation
 python src/analysis/collect_knn_results.py
+
+# CNN redshift prediction evaluation
+python src/analysis/cnn_regressor.py
+
 ```
 
-All figures are saved as both `.pdf` (for paper) and `.png` (for preview) to `analysis/`.
+All figures are saved as both `.pdf` (for paper) and `.png` (for preview) to `analysis/`
 
 ---
